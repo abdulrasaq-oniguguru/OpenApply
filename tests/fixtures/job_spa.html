@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Loading...</title></head>
+<body>
+  <div id="app">Loading...</div>
+  <script>
+    // Client-side rendered page: the posting only exists after a short delay.
+    setTimeout(function () {
+      document.title = "Site Reliability Engineer";
+      document.getElementById("app").innerHTML =
+        "<h1>Site Reliability Engineer</h1>" +
+        "<p>Example Corp needs an SRE to keep production healthy. Requirements: Linux, " +
+        "monitoring, incident response, and at least three years running production systems. " +
+        "You will be on a friendly on-call rotation and improve our deployment pipeline. " +
+        "We offer a remote-first culture, learning budget and flexible hours across time zones.</p>";
+    }, 600);
+  </script>
+</body>
+</html>

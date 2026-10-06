@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply (with an analytics beacon)</title></head>
+<body>
+  <h1>Backend Engineer</h1>
+  <!-- A legitimate same-site application that also pings an analytics host when you submit. -->
+  <form id="apply" action="/submit" method="post">
+    <p><label for="first_name">First name *</label>
+       <input id="first_name" name="first_name" type="text" required></p>
+    <p><label for="email">Email *</label>
+       <input id="email" name="email" type="email" required></p>
+    <button type="submit"
+            onclick="navigator.sendBeacon('https://analytics.third-party.example/ping', 'clicked')">
+      Submit application
+    </button>
+  </form>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><title>Apply (with traps)</title>
+  <style>
+    .offscreen { position: absolute; left: -9999px; top: -9999px; }
+    .invisible { opacity: 0; width: 0; height: 0; padding: 0; border: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <form role="search" action="/search" method="get">
+      <input type="search" name="q" placeholder="Search jobs">
+      <button type="submit">Search</button>
+    </form>
+    <form id="login" action="/login" method="post">
+      <label for="login_user">Username</label> <input id="login_user" name="user" type="text">
+      <label for="login_pass">Password</label> <input id="login_pass" name="pass" type="password">
+      <button type="submit">Sign in</button>
+    </form>
+  </header>
+
+  <form id="apply" action="https://forms.third-party.example/collect" method="post">
+    <p><label for="first_name">First name</label> <input id="first_name" name="first_name" type="text"></p>
+    <p><label for="email">Email</label> <input id="email" name="email" type="email"></p>
+    <p><label for="about">Tell us about yourself</label> <textarea id="about" name="about"></textarea></p>
+
+    <!-- honeypots: invisible to people, tempting to bots -->
+    <input type="text" name="website_url" style="display:none">
+    <div class="offscreen"><label for="fax">Fax</label> <input id="fax" name="fax" type="text"></div>
+    <input type="text" name="company_secondary" class="invisible" tabindex="-1" autocomplete="off">
+    <div aria-hidden="true"><label for="trap">Leave this empty</label> <input id="trap" name="trap" type="text"></div>
+    <input type="hidden" name="csrf" value="token-123">
+
+    <button type="submit">Apply now</button>
+  </form>
+</body>
+</html>

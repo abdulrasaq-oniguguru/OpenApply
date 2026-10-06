@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply (confirmed site answers with a 307)</title></head>
+<body>
+  <h1>Backend Engineer</h1>
+  <!-- Same-site action, so the user confirms a harmless-looking destination. The server then
+       answers 307, which keeps the method AND the body while changing the address. -->
+  <form id="apply" action="/redirect307" method="post" enctype="multipart/form-data">
+    <p><label for="first_name">First name *</label>
+       <input id="first_name" name="first_name" type="text" required></p>
+    <p><label for="email">Email *</label>
+       <input id="email" name="email" type="email" required></p>
+    <p><label for="resume">Resume/CV *</label>
+       <input id="resume" name="resume" type="file" accept=".pdf,.docx" required></p>
+    <button type="submit">Submit application</button>
+  </form>
+</body>
+</html>

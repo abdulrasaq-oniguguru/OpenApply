@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply (a harmless same-site 307)</title></head>
+<body>
+  <h1>Backend Engineer</h1>
+  <!-- A legitimate pattern: the server moves the endpoint, same site, body preserved. -->
+  <form id="apply" action="/redirect307_same" method="post" enctype="multipart/form-data">
+    <p><label for="first_name">First name *</label>
+       <input id="first_name" name="first_name" type="text" required></p>
+    <p><label for="email">Email *</label>
+       <input id="email" name="email" type="email" required></p>
+    <p><label for="resume">Resume/CV *</label>
+       <input id="resume" name="resume" type="file" accept=".pdf,.docx" required></p>
+    <button type="submit">Submit application</button>
+  </form>
+</body>
+</html>

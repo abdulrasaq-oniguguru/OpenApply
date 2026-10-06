@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply - sensitive questions</title></head>
+<body>
+  <h1>Platform Engineer</h1>
+  <form id="apply" action="/submit" method="post">
+    <p><label for="first_name">First name *</label> <input id="first_name" name="first_name" type="text" required></p>
+    <p><label for="email">Email *</label> <input id="email" name="email" type="email" required></p>
+
+    <fieldset>
+      <legend>Are you legally authorized to work in the United States? *</legend>
+      <label><input type="radio" name="auth" value="yes" required> Yes</label>
+      <label><input type="radio" name="auth" value="no"> No</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Will you now or in the future require sponsorship?</legend>
+      <label><input type="radio" name="sponsor" value="yes"> Yes</label>
+      <label><input type="radio" name="sponsor" value="no"> No</label>
+    </fieldset>
+
+    <p><label for="relocate">Are you willing to relocate?</label>
+       <select id="relocate" name="relocate">
+         <option value="">Select</option>
+         <option value="yes">Yes</option>
+         <option value="no">No</option>
+       </select></p>
+
+    <p><label for="gender">Gender</label>
+       <select id="gender" name="gender">
+         <option value="">Select</option>
+         <option value="m">Male</option>
+         <option value="f">Female</option>
+         <option value="x">Prefer not to say</option>
+       </select></p>
+
+    <fieldset>
+      <legend>Have you ever been convicted of a felony?</legend>
+      <label><input type="radio" name="felony" value="yes"> Yes</label>
+      <label><input type="radio" name="felony" value="no"> No</label>
+    </fieldset>
+
+    <p><label for="clearance">Do you hold an active security clearance?</label>
+       <select id="clearance" name="clearance">
+         <option value="">Select</option>
+         <option value="none">None</option>
+         <option value="secret">Secret</option>
+       </select></p>
+
+    <p><label for="salary">Desired salary (USD)</label> <input id="salary" name="salary" type="text"></p>
+
+    <p><label><input type="checkbox" name="terms" value="on" required> I have read and agree to the Terms and Conditions *</label></p>
+    <p><label><input type="checkbox" name="marketing" value="on" checked> Send me occasional job alerts</label></p>
+
+    <button type="submit">Submit application</button>
+  </form>
+</body>
+</html>

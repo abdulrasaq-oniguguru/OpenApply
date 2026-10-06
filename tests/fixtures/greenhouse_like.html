@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><title>Job Application for Backend Engineer at Example Corp</title>
+  <style>
+    .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); opacity:0; }
+    .field { margin: 12px 0; }
+    .required { color: #c00; }
+  </style>
+</head>
+<body>
+  <header>
+    <form class="job-alerts" action="/subscribe" method="post">
+      <label for="alert_email">Get job alerts</label>
+      <input id="alert_email" name="alert_email" type="email" placeholder="you@example.com">
+      <button type="submit">Subscribe</button>
+    </form>
+  </header>
+
+  <h1>Backend Engineer</h1>
+  <form id="application_form" action="/submit" method="post" enctype="multipart/form-data">
+    <div class="field">
+      <label for="first_name">First Name <span class="required">*</span></label>
+      <input id="first_name" name="job_application[first_name]" type="text" required aria-required="true">
+    </div>
+    <div class="field">
+      <label for="last_name">Last Name <span class="required">*</span></label>
+      <input id="last_name" name="job_application[last_name]" type="text" required aria-required="true">
+    </div>
+    <div class="field">
+      <label for="email">Email <span class="required">*</span></label>
+      <input id="email" name="job_application[email]" type="text" inputmode="email" required>
+    </div>
+    <div class="field">
+      <label for="phone">Phone</label>
+      <input id="phone" name="job_application[phone]" type="text">
+    </div>
+
+    <div class="field upload">
+      <div id="resume_label">Resume/CV <span class="required">*</span></div>
+      <button type="button" class="attach" onclick="document.getElementById('resume_file').click()">Attach</button>
+      <input id="resume_file" class="visually-hidden" name="job_application[resume]" type="file"
+             accept=".pdf,.doc,.docx,.txt" aria-labelledby="resume_label">
+    </div>
+
+    <div class="field">
+      <label for="linkedin">LinkedIn Profile</label>
+      <input id="linkedin" name="job_application[urls][linkedin]" type="text">
+    </div>
+    <div class="field">
+      <label for="website">Website</label>
+      <input id="website" name="job_application[urls][website]" type="text">
+    </div>
+
+    <div class="field">
+      <label for="q_auth">Are you legally authorized to work in the United States? <span class="required">*</span></label>
+      <select id="q_auth" name="job_application[answers][auth]" required>
+        <option value="">Please select</option>
+        <option value="1">Yes</option>
+        <option value="0">No</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="q_sponsor">Will you now or in the future require sponsorship for employment visa status? <span class="required">*</span></label>
+      <select id="q_sponsor" name="job_application[answers][sponsor]" required>
+        <option value="">Please select</option>
+        <option value="1">Yes</option>
+        <option value="0">No</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="q_why">Why do you want to work at Example Corp?</label>
+      <textarea id="q_why" name="job_application[answers][why]" maxlength="400"></textarea>
+    </div>
+
+    <h3>Voluntary Self-Identification</h3>
+    <p>We are an equal opportunity employer. Answering is voluntary.</p>
+    <div class="field">
+      <label for="gender">Gender</label>
+      <select id="gender" name="job_application[eeoc][gender]">
+        <option value="">Please select</option>
+        <option value="1">Male</option>
+        <option value="2">Female</option>
+        <option value="3">Decline To Self Identify</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="veteran">Veteran Status</label>
+      <select id="veteran" name="job_application[eeoc][veteran]">
+        <option value="">Please select</option>
+        <option value="1">I am not a protected veteran</option>
+        <option value="2">Decline To Self Identify</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="disability">Disability Status</label>
+      <select id="disability" name="job_application[eeoc][disability]">
+        <option value="">Please select</option>
+        <option value="1">Yes, I have a disability</option>
+        <option value="2">No, I do not have a disability</option>
+        <option value="3">I do not want to answer</option>
+      </select>
+    </div>
+
+    <button type="submit" id="submit_app">Submit Application</button>
+  </form>
+</body>
+</html>
