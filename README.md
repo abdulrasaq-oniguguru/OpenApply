@@ -12,6 +12,21 @@ Many job seekers already pay for tools such as ChatGPT, Claude or GitHub Copilot
 models. Most AI job tools ask for yet another subscription or separate API spending.
 OpenApply lets you bring your existing AI environment instead. It never asks for an API key.
 
+## Install
+
+Requires Python 3.12+ and a Chromium-family browser. An already-installed Google Chrome or
+Microsoft Edge is used automatically; nothing extra needs downloading on most machines.
+
+```bash
+git clone https://github.com/abdulrasaq-oniguguru/OpenApply.git
+cd OpenApply
+uv sync                      # or: pip install -e .
+uv run openapply doctor      # shows which AI tools and browser it found
+```
+
+You also need at least one AI tool you already use and are signed in to: Codex CLI, Claude Code
+or Ollama. OpenApply never asks for an API key.
+
 ## Example
 
 ```bash
@@ -246,3 +261,10 @@ Tests mock all subprocess and HTTP calls, so no paid provider is needed.
 ## License
 
 MIT. It is short, permissive and widely understood, which suits a tool people may embed or fork.
+
+## Responsible use
+
+OpenApply helps you apply to jobs you actually want, with answers you have read. It is not for
+mass-submitting applications. Respect each site's terms and automation rules, and remember that
+you are responsible for everything sent in your name. See [CONTRIBUTING.md](CONTRIBUTING.md) to
+help, and [SECURITY.md](SECURITY.md) to report a vulnerability.

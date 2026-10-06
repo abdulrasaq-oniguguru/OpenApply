@@ -5,6 +5,15 @@ description = "Local-first AI job application assistant that uses the AI tools y
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
+keywords = ["jobs", "job-application", "automation", "llm", "local-first", "playwright"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+]
 dependencies = [
     "typer>=0.12",
     "click>=8.1",
@@ -18,6 +27,10 @@ dependencies = [
 
 [project.scripts]
 openapply = "openapply.cli.app:main"
+
+[project.urls]
+Homepage = "https://github.com/abdulrasaq-oniguguru/OpenApply"
+Issues = "https://github.com/abdulrasaq-oniguguru/OpenApply/issues"
 
 [dependency-groups]
 dev = [
