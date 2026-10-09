@@ -119,6 +119,27 @@ def test_job_id_is_stable_across_cosmetic_url_differences() -> None:
         ("https://jobs.ashbyhq.com/acme/abc", SourcePlatform.ASHBY),
         ("https://www.linkedin.com/jobs/view/1", SourcePlatform.LINKEDIN),
         ("https://uk.indeed.com/viewjob?jk=1", SourcePlatform.INDEED),
+        ("https://work.mercor.com/explore?listingId=list_123456", SourcePlatform.MERCOR),
+        ("https://app.outlier.ai/opportunities/4705643005", SourcePlatform.OUTLIER),
+        (
+            "https://www.dataannotation.tech/job-board/software-engineer",
+            SourcePlatform.DATAANNOTATION,
+        ),
+        ("https://www.alignerr.com/jobs/role-id", SourcePlatform.ALIGNERR),
+        ("https://jobs.micro1.ai/post/role-id", SourcePlatform.MICRO1),
+        (
+            "https://himalayas.app/companies/acme/jobs/backend-engineer",
+            SourcePlatform.HIMALAYAS,
+        ),
+        (
+            "https://remotive.com/remote-jobs/software-dev/backend-engineer-42",
+            SourcePlatform.REMOTIVE,
+        ),
+        ("https://wellfound.com/jobs/123-backend-engineer", SourcePlatform.WELLFOUND),
+        (
+            "https://weworkremotely.com/remote-jobs/acme-backend-engineer",
+            SourcePlatform.WE_WORK_REMOTELY,
+        ),
         ("https://careers.example.com/job/1", SourcePlatform.GENERIC),
         ("https://notgreenhouse.io.evil.example/x", SourcePlatform.GENERIC),
         ("https://evillever.co/x", SourcePlatform.GENERIC),

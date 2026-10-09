@@ -615,11 +615,31 @@ el('profile-review').addEventListener('submit', async (event) => {
   }
 });
 
+function syncDiscoveryInputs() {
+  const analyze = el('source-kind').value === 'analyze';
+  const builtIn = Boolean(el('source-platform').value) && !analyze;
+  el('source-platform').disabled = analyze;
+  el('source-query').disabled = analyze || !builtIn;
+  el('source-url').disabled = builtIn;
+  el('source-url').required = !builtIn;
+}
+
+el('source-kind').addEventListener('change', syncDiscoveryInputs);
+el('source-platform').addEventListener('change', syncDiscoveryInputs);
+
 el('discovery-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const url = el('source-url').value.trim();
   const kind = el('source-kind').value;
-  await api(`/api/tasks/${kind}`, { method: 'POST', body: JSON.stringify({ url }) });
+  const platform = el('source-platform').value;
+  if (kind === 'discover' && platform) {
+    const query = el('source-query').value.trim() || null;
+    await api('/api/tasks/discover-platform', {
+      method: 'POST', body: JSON.stringify({ platform, query })
+    });
+  } else {
+    await api(`/api/tasks/${kind}`, { method: 'POST', body: JSON.stringify({ url }) });
+  }
   el('source-url').value = '';
   await refresh();
 });
@@ -633,6 +653,7 @@ el('worker-toggle').addEventListener('click', async () => {
 el('detail-dialog').querySelector('.dialog-close').addEventListener('click', () => el('detail-dialog').close());
 setInterval(() => { el('clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }, 1000);
 setInterval(() => { if (!el('detail-dialog').open) refresh().catch(() => {}); }, 5000);
+syncDiscoveryInputs();
 Promise.all([refresh(), refreshProviders()]).catch((error) => {
   el('today-summary').textContent = error.message;
 });

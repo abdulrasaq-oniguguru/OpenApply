@@ -18,7 +18,10 @@ For a normal local session, run `openapply start`; it starts the private desk an
 3. Refresh saved deterministic scores after profile or matching-rule changes with `openapply worker rematch --json`.
 4. Analyze a single confirmed posting with `openapply analyze <job-url> --json`.
 5. Discover from a user-selected listing page with `openapply worker discover <listing-url> --json`; then let the worker process the bounded result set.
-6. Treat `match.recommendation`, `blockers`, `gaps`, and `confidence` as part of the result. Do not rank by `overall_score` alone.
+6. List built-in sources with `openapply worker platforms --json`. Start a focused search with `openapply worker discover-platform <platform> --query "<preferred role>" --json`. If `--query` is omitted, the CLI uses the first preferred role in the saved profile when available.
+7. Treat `match.recommendation`, `blockers`, `gaps`, and `confidence` as part of the result. Do not rank by `overall_score` alone.
+
+Built-in keys are `mercor`, `outlier`, `dataannotation`, `alignerr`, `micro1`, `himalayas`, `remotive`, `wellfound`, and `we-work-remotely`. Himalayas and Remotive use their public JSON APIs; We Work Remotely uses its public RSS feed; the remaining sources use bounded rendered-page discovery.
 
 ## Safety boundaries
 
@@ -26,4 +29,4 @@ For a normal local session, run `openapply start`; it starts the private desk an
 - Never claim that an application was submitted from a match or a prepared draft.
 - Application submission always requires the user's review and explicit confirmation. Use `openapply apply <application-url> --job-url <job-url>` or the desk; do not bypass its confirmation step.
 - If a task fails, inspect `last_error` through `openapply worker list --json`. Do not blindly retry an application dispatch whose outcome is unknown.
-- Mercor analysis accepts single-listing URLs shaped like `https://work.mercor.com/jobs/list_<id>/<job-slug>`, not navigation or explore pages.
+- Mercor analysis accepts both `https://work.mercor.com/jobs/list_<id>/<job-slug>` and legacy `https://work.mercor.com/explore?listingId=<id>` single-listing URLs. A plain navigation or explore page is still rejected.

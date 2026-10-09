@@ -75,6 +75,16 @@ async def test_waits_for_client_side_rendered_content(
     assert "incident response" in page.text
 
 
+async def test_can_filter_a_public_listing_search_box(
+    fetcher: PlaywrightFetcher, fixture_server: str
+) -> None:
+    page = await fetcher.fetch_with_query(
+        f"{fixture_server}/search_listing.html", "backend engineer"
+    )
+
+    assert [link.text for link in page.links] == ["Backend Engineer"]
+
+
 async def test_hidden_injection_is_not_read_but_visible_injection_is_returned_as_text(
     fetcher: PlaywrightFetcher, fixture_server: str
 ) -> None:

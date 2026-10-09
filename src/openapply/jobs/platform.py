@@ -1,4 +1,4 @@
-"""Deterministic platform detection from a job URL (adapters arrive in Milestone 6)."""
+"""Deterministic platform detection from a job URL."""
 
 from __future__ import annotations
 
@@ -7,6 +7,15 @@ from urllib.parse import urlsplit
 from openapply.jobs.models import SourcePlatform
 
 _HOST_SUFFIXES: tuple[tuple[str, SourcePlatform], ...] = (
+    ("mercor.com", SourcePlatform.MERCOR),
+    ("outlier.ai", SourcePlatform.OUTLIER),
+    ("dataannotation.tech", SourcePlatform.DATAANNOTATION),
+    ("alignerr.com", SourcePlatform.ALIGNERR),
+    ("micro1.ai", SourcePlatform.MICRO1),
+    ("himalayas.app", SourcePlatform.HIMALAYAS),
+    ("remotive.com", SourcePlatform.REMOTIVE),
+    ("wellfound.com", SourcePlatform.WELLFOUND),
+    ("weworkremotely.com", SourcePlatform.WE_WORK_REMOTELY),
     ("greenhouse.io", SourcePlatform.GREENHOUSE),
     ("lever.co", SourcePlatform.LEVER),
     ("ashbyhq.com", SourcePlatform.ASHBY),

@@ -7,6 +7,7 @@ import pytest
 
 from openapply.applications.history import ApplicationHistoryService
 from openapply.candidate.service import CandidateService
+from openapply.discovery.service import DiscoveryResult
 from openapply.jobs.extractor import NotAJobPosting
 from openapply.storage.database import Database
 from openapply.storage.repositories import OpportunityRepository
@@ -118,6 +119,52 @@ async def test_non_detail_mercor_url_fails_without_starting_provider(tmp_path: P
     failed = worker.queue.get(task.id)
     assert failed.state is TaskState.FAILED
     assert failed.last_error is not None and "not a single job posting" in failed.last_error
+
+
+async def test_legacy_mercor_listing_reaches_analysis_setup(tmp_path: Path) -> None:
+    worker = Worker(Database(tmp_path / "agent.db"), owner="worker-1")
+    task = worker.queue.enqueue(
+        "analyze_job",
+        {"url": ("https://work.mercor.com/explore?listingId=list_AAABnhjAupH8rg501CtL_6ao")},
+    )
+
+    assert await worker.run_once()
+    waiting = worker.queue.get(task.id)
+    assert waiting.state is TaskState.NEEDS_USER
+    assert waiting.last_error is not None and "default provider" in waiting.last_error
+
+
+async def test_platform_discovery_queues_each_bounded_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker = Worker(Database(tmp_path / "agent.db"), owner="worker-1")
+    task = worker.queue.enqueue(
+        "discover_platform", {"platform": "remotive", "query": "backend engineer"}
+    )
+
+    async def fake_discover(
+        self: object, platform: str, *, query: str | None = None
+    ) -> DiscoveryResult:
+        assert platform == "remotive"
+        assert query == "backend engineer"
+        return DiscoveryResult(
+            source_url="https://remotive.com/api/remote-jobs?search=backend+engineer",
+            job_urls=["https://remotive.com/remote-jobs/software-dev/backend-engineer-42"],
+            inspected_links=1,
+            platform="remotive",
+            query=query,
+            attribution="Job data sourced from Remotive.",
+        )
+
+    monkeypatch.setattr("openapply.worker.runner.PlatformDiscoveryService.discover", fake_discover)
+
+    assert await worker.run_once()
+    completed = worker.queue.get(task.id)
+    assert completed.state is TaskState.COMPLETED
+    assert completed.checkpoint["platform"] == "remotive"
+    queued = [item for item in worker.queue.list() if item.type == "analyze_job"]
+    assert len(queued) == 1
+    assert str(queued[0].payload["url"]).endswith("backend-engineer-42")
 
 
 async def test_worker_prepares_then_dispatches_an_authorized_revision_once(

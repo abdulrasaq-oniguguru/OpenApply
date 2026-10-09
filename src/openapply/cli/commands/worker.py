@@ -12,6 +12,7 @@ from rich.table import Table
 
 from openapply.candidate.service import CandidateService
 from openapply.candidate.storage import ProfileError
+from openapply.discovery.platforms import get_platform_source, platform_source_documents
 from openapply.jobs.matcher import score_match
 from openapply.jobs.models import JobPosting
 from openapply.storage.repositories import OpportunityRepository
@@ -52,6 +53,60 @@ def discover(url: str, as_json: Annotated[bool, typer.Option("--json")] = False)
         typer.echo(_task_json(task))
     else:
         console.print(f"Queued source discovery: {task.id}")
+
+
+@app.command("platforms")
+def platforms(as_json: Annotated[bool, typer.Option("--json")] = False) -> None:
+    """List built-in public job sources and extraction methods."""
+    documents = platform_source_documents()
+    if as_json:
+        typer.echo(
+            json.dumps(
+                {"schema": "openapply-platforms/v1", "platforms": documents},
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return
+    table = Table("Key", "Platform", "Jobs", "Extraction", title="Discovery platforms")
+    for item in documents:
+        table.add_row(
+            str(item["key"]),
+            str(item["name"]),
+            str(item["job_types"]),
+            str(item["approach"]),
+        )
+    console.print(table)
+
+
+@app.command("discover-platform")
+def discover_platform(
+    platform: str,
+    query: Annotated[
+        str | None,
+        typer.Option(help="Target role or keywords; defaults to the first preferred profile role."),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Queue bounded discovery from a built-in public platform source."""
+    try:
+        source = get_platform_source(platform)
+        profile = CandidateService().load()
+    except (ValueError, ProfileError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+    resolved_query = query.strip() if query and query.strip() else None
+    if resolved_query is None and profile is not None and profile.preferences.roles:
+        resolved_query = profile.preferences.roles[0]
+    payload: dict[str, object] = {"platform": source.key}
+    if resolved_query:
+        payload["query"] = resolved_query
+    task = TaskQueue().enqueue("discover_platform", payload)
+    if as_json:
+        typer.echo(_task_json(task))
+    else:
+        target = f" for '{resolved_query}'" if resolved_query else ""
+        console.print(f"Queued {source.name} discovery{target}: {task.id}")
 
 
 @app.command("list")

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from openapply.applications.answers import AnswerContext
 from openapply.applications.history import ApplicationHistoryService
 from openapply.applications.service import plan_application
+from openapply.candidate.service import CandidateService
 from openapply.config.settings import load_settings
 from openapply.providers.models import ProviderStatus
 from openapply.providers.registry import ProviderRegistry
@@ -189,6 +190,30 @@ def test_resume_preview_requires_review_then_saves_profile(tmp_path: Path) -> No
     assert state["profile"]["resume"]["original_name"] == "Ada CV.docx"
     opportunity = next(item for item in state["opportunities"] if item["id"] == opportunity_id)
     assert opportunity["match"]["overall_score"] >= 0
+
+
+def test_desk_lists_and_queues_builtin_platform_discovery(tmp_path: Path) -> None:
+    database = Database(tmp_path / "agent.db")
+    CandidateService().save(make_profile())
+    client = TestClient(create_app(database))
+    page = client.get("/")
+    token = re.search(r'name="openapply-csrf" content="([^"]+)"', page.text).group(1)  # type: ignore[union-attr]
+
+    assert 'value="remotive"' in page.text
+    assert 'value="we-work-remotely"' in page.text
+    response = client.post(
+        "/api/tasks/discover-platform",
+        headers={"X-OpenApply-CSRF": token},
+        json={"platform": "remotive", "query": None},
+    )
+
+    assert response.status_code == 200
+    task = response.json()
+    assert task["type"] == "discover_platform"
+    assert task["payload"] == {
+        "platform": "remotive",
+        "query": "Backend Engineer",
+    }
 
 
 async def test_web_review_authorize_and_queue_dispatch(tmp_path: Path) -> None:

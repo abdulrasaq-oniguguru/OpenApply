@@ -34,6 +34,7 @@ from openapply.candidate.service import (
 )
 from openapply.config.settings import ConfigError, load_settings, save_settings
 from openapply.conversations.service import ConversationService
+from openapply.discovery.platforms import get_platform_source, platform_source_documents
 from openapply.interviews.models import EvidenceState
 from openapply.interviews.service import InterviewService
 from openapply.jobs.matcher import score_match
@@ -84,6 +85,13 @@ class URLTaskRequest(BaseModel):
 
     url: str = Field(min_length=8, max_length=2000)
     provider: str | None = Field(default=None, max_length=60)
+
+
+class PlatformTaskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    platform: str = Field(min_length=1, max_length=60)
+    query: str | None = Field(default=None, max_length=200)
 
 
 class PrepareRequest(BaseModel):
@@ -156,7 +164,10 @@ def create_app(database: Database | None = None) -> FastAPI:
         return templates.TemplateResponse(
             request=request,
             name="index.html",
-            context={"csrf_token": csrf_token},
+            context={
+                "csrf_token": csrf_token,
+                "platform_sources": platform_source_documents(),
+            },
         )
 
     @app.get("/api/state")
@@ -453,6 +464,22 @@ def create_app(database: Database | None = None) -> FastAPI:
     @app.post("/api/tasks/discover", dependencies=[Depends(require_csrf)])
     async def queue_discovery(body: URLTaskRequest) -> dict[str, object]:
         return task_queue.enqueue("discover_source", {"url": body.url}).model_dump()
+
+    @app.post("/api/tasks/discover-platform", dependencies=[Depends(require_csrf)])
+    async def queue_platform_discovery(body: PlatformTaskRequest) -> dict[str, object]:
+        try:
+            source = get_platform_source(body.platform)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        query = body.query.strip() if body.query and body.query.strip() else None
+        if query is None:
+            profile = CandidateService().load()
+            if profile is not None and profile.preferences.roles:
+                query = profile.preferences.roles[0]
+        payload: dict[str, object] = {"platform": source.key}
+        if query:
+            payload["query"] = query
+        return task_queue.enqueue("discover_platform", payload).model_dump()
 
     @app.post("/api/tasks/analyze", dependencies=[Depends(require_csrf)])
     async def queue_analysis(body: URLTaskRequest) -> dict[str, object]:

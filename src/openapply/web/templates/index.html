@@ -132,8 +132,13 @@
       </div>
       <div class="discovery-body">
         <form id="discovery-form" class="source-form">
-          <label for="source-url">Company career page or job URL</label>
+          <label for="source-url">Public platform, career page or job URL</label>
           <div>
+            <select id="source-platform" aria-label="Discovery platform">
+              <option value="">Custom URL</option>
+              {% for source in platform_sources %}<option value="{{ source.key }}">{{ source.name }}</option>{% endfor %}
+            </select>
+            <input id="source-query" type="text" maxlength="200" placeholder="Target role, e.g. software engineer">
             <input id="source-url" type="url" required placeholder="https://company.example/careers">
             <select id="source-kind" aria-label="Task type"><option value="discover">Discover listing</option><option value="analyze">Analyze one job</option></select>
             <button class="primary" type="submit">Queue</button>

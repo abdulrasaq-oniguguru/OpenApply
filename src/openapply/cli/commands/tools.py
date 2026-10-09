@@ -49,6 +49,18 @@ TOOLS: tuple[ToolDescription, ...] = (
         "access": "opens URL; queues work",
     },
     {
+        "name": "list_job_platforms",
+        "command": "openapply worker platforms --json",
+        "purpose": "List built-in page, JSON API, and RSS discovery sources.",
+        "access": "read-only",
+    },
+    {
+        "name": "discover_platform",
+        "command": "openapply worker discover-platform <platform> --query <role> --json",
+        "purpose": "Queue bounded role-targeted discovery from a built-in public source.",
+        "access": "opens public source; queues work",
+    },
+    {
         "name": "list_tasks",
         "command": "openapply worker list --json",
         "purpose": "Inspect durable task states, errors, and leases.",

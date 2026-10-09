@@ -53,6 +53,11 @@ _JSON_LD_JS = """({blocks, chars}) => Array.from(
 ).slice(0, blocks).map(s => s.textContent || '').filter(t => t.length <= chars)"""
 MAX_LINKS = 300
 MAX_LINK_CHARS = 500
+_SEARCH_INPUT_SELECTORS = (
+    'input[type="search"]',
+    'input[placeholder*="search" i]',
+    'input[aria-label*="search" i]',
+)
 _LINKS_JS = """({limit, chars}) => Array.from(document.querySelectorAll('a[href]')).slice(0, limit)
     .map(a => [(a.innerText || '').trim().slice(0, 80), a.href])
     .filter(([, h]) => h.length <= chars)"""
@@ -107,6 +112,13 @@ class PlaywrightFetcher:
         )
 
     async def fetch(self, url: str) -> FetchedPage:
+        return await self._fetch(url)
+
+    async def fetch_with_query(self, url: str, query: str) -> FetchedPage:
+        """Fetch a listing page after filling its public search box when available."""
+        return await self._fetch(url, search_query=query)
+
+    async def _fetch(self, url: str, *, search_query: str | None = None) -> FetchedPage:
         try:
             url = validate_job_url(url, allow_local=self._allow_local)
         except UnsafeURLError as exc:
@@ -115,11 +127,13 @@ class PlaywrightFetcher:
         async with async_playwright() as playwright:
             browser, _label = await launch_browser(playwright, headless=self._headless)
             try:
-                return await self._load(browser, url)
+                return await self._load(browser, url, search_query=search_query)
             finally:
                 await browser.close()
 
-    async def _load(self, browser: Browser, url: str) -> FetchedPage:
+    async def _load(
+        self, browser: Browser, url: str, *, search_query: str | None = None
+    ) -> FetchedPage:
         context = await browser.new_context(
             accept_downloads=False,
             permissions=[],
@@ -138,6 +152,8 @@ class PlaywrightFetcher:
                 raise BrowserError(f"Could not load {url}: {first_line(exc)}") from exc
 
             await self._settle(page)
+            if search_query:
+                await self._filter_listing(page, search_query)
             # Redirects are followed by the policy, so the page keeps the address it was asked
             # for; the policy remembers where that navigation really ended up.
             final_url = self._policy.final_url_for(page.url)
@@ -171,6 +187,19 @@ class PlaywrightFetcher:
             raise BrowserError(f"Reading the page failed: {first_line(exc)}") from exc
         finally:
             await context.close()
+
+    async def _filter_listing(self, page: Page, query: str) -> None:
+        for selector in _SEARCH_INPUT_SELECTORS:
+            field = page.locator(selector).first
+            if not await field.count():
+                continue
+            try:
+                await field.fill(query)
+                await page.wait_for_timeout(1_000)
+                await self._settle(page)
+            except (PlaywrightError, PlaywrightTimeout):
+                log.debug("listing search field could not be used; continuing unfiltered")
+            return
 
     async def _settle(self, page: Page) -> None:
         try:

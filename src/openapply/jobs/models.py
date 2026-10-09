@@ -65,6 +65,15 @@ class SourcePlatform(StrEnum):
     ASHBY = "ashby"
     LINKEDIN = "linkedin"
     INDEED = "indeed"
+    MERCOR = "mercor"
+    OUTLIER = "outlier"
+    DATAANNOTATION = "dataannotation"
+    ALIGNERR = "alignerr"
+    MICRO1 = "micro1"
+    HIMALAYAS = "himalayas"
+    REMOTIVE = "remotive"
+    WELLFOUND = "wellfound"
+    WE_WORK_REMOTELY = "we_work_remotely"
     GENERIC = "generic"
 
 

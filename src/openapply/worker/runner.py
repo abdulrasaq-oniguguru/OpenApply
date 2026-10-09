@@ -21,7 +21,13 @@ from openapply.browser.forms import open_form_session
 from openapply.browser.page import BrowserError
 from openapply.candidate.service import CandidateService
 from openapply.config.settings import load_settings
-from openapply.discovery.service import DiscoveryService, is_likely_job_detail_url, is_mercor_url
+from openapply.discovery.service import (
+    DiscoveryResult,
+    DiscoveryService,
+    is_likely_job_detail_url,
+    is_mercor_url,
+)
+from openapply.discovery.sources import PlatformDiscoveryService
 from openapply.interviews.service import InterviewService
 from openapply.jobs.extractor import ExtractionError
 from openapply.jobs.models import JobPosting
@@ -63,6 +69,8 @@ class Worker:
         try:
             if task.type == "discover_source":
                 await self._discover(task.id, task.payload)
+            elif task.type == "discover_platform":
+                await self._discover_platform(task.id, task.payload)
             elif task.type == "analyze_job":
                 await self._analyze(task.id, task.payload)
             elif task.type == "prepare_application":
@@ -106,6 +114,16 @@ class Worker:
     async def _discover(self, task_id: str, payload: dict[str, object]) -> None:
         url = str(payload.get("url", ""))
         result = await DiscoveryService(PlaywrightFetcher()).discover(url)
+        self._complete_discovery(task_id, result)
+
+    async def _discover_platform(self, task_id: str, payload: dict[str, object]) -> None:
+        platform = str(payload.get("platform", ""))
+        query_value = payload.get("query")
+        query = str(query_value) if query_value else None
+        result = await PlatformDiscoveryService(PlaywrightFetcher()).discover(platform, query=query)
+        self._complete_discovery(task_id, result)
+
+    def _complete_discovery(self, task_id: str, result: DiscoveryResult) -> None:
         task_ids = []
         for job_url in result.job_urls:
             queued = self.queue.enqueue("analyze_job", {"url": job_url})
@@ -118,6 +136,9 @@ class Worker:
                 "inspected_links": result.inspected_links,
                 "job_urls": result.job_urls,
                 "queued_task_ids": task_ids,
+                "platform": result.platform,
+                "query": result.query,
+                "attribution": result.attribution,
             },
         )
 
@@ -126,7 +147,8 @@ class Worker:
         if is_mercor_url(url) and not is_likely_job_detail_url(url):
             raise ValueError(
                 "Mercor URL is not a single job posting; expected "
-                "https://work.mercor.com/jobs/list_<id>/<job-slug>."
+                "https://work.mercor.com/jobs/list_<id>/<job-slug> or "
+                "https://work.mercor.com/explore?listingId=<id>."
             )
         settings = load_settings()
         provider_name = str(payload.get("provider") or settings.default_provider or "")

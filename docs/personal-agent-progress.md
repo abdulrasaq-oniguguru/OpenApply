@@ -11,8 +11,9 @@ OpenApply now has a usable local personal-agent foundation: durable interviews a
 evidence, bounded job discovery, a resumable worker, a private web desk, application history,
 concise reports, and an optional paired Telegram channel. It remains review-first. The web desk
 can now take a single-page opportunity through local preparation, immutable edits, exact
-authorization and one crash-safe queued submission. External platform adapters and automatic
-submission policy are not implemented.
+authorization and one crash-safe queued submission. Public discovery adapters now cover nine
+job platforms; dedicated platform application adapters and automatic submission policy are not
+implemented.
 
 ## Delivery status
 
@@ -21,7 +22,7 @@ submission policy are not implemented.
 | SQLite migrations and repositories | Complete | Interviews, evidence, conversations, tasks, opportunities, provider cooldowns, pairings and application history survive restarts. |
 | Deep interview and personal knowledge | Complete for the first slice | Sessions resume; answers propose evidence; the user confirms or rejects it before it can be used. |
 | Evidence-grounded generation | Partial | Relevant confirmed evidence is included in application prompts. Generated answers do not yet carry evidence IDs or an automated unsupported-claim verdict. |
-| Career-page discovery | Partial | A supplied career/listing page is scanned within a fixed link budget, deduplicated and queued. Pagination and platform listing adapters are not implemented. |
+| Career-page discovery | Complete for the requested public sources | Custom pages are scanned within a fixed link budget. Built-in discovery supports Mercor, Outlier, DataAnnotation, Alignerr, micro1, Himalayas, Remotive, Wellfound and We Work Remotely through public pages, official JSON APIs or RSS. Login-only listings and general pagination remain out of scope. |
 | Resumable worker and provider cooldown | Complete for the reviewed single-page slice | Tasks use leases, recover after interruption, pause/resume, prepare drafts and dispatch an exact authorization once. Per-answer generation checkpoints are still future work. |
 | Personal web app | Complete for the first slice | Conversation, interview, evidence decisions, discovery tasks, opportunities, worker state and the application ledger are available on loopback. |
 | Conversation | Partial | Deterministic commands cover status, interviews and reports. There is no provider-backed open-ended assistant yet. |
@@ -52,6 +53,8 @@ openapply interview start
 openapply agent serve
 openapply agent report --timezone Africa/Lagos --details
 openapply worker discover <career-page-url>
+openapply worker platforms --json
+openapply worker discover-platform remotive --query "backend engineer" --json
 openapply worker run
 openapply telegram pair
 openapply telegram run --timezone Africa/Lagos
@@ -59,7 +62,7 @@ openapply telegram run --timezone Africa/Lagos
 
 ## Verification snapshot
 
-- Full tests: **767 passed, 2 skipped** in 202.69 seconds.
+- Full tests: **813 passed, 2 skipped** in 304.81 seconds.
 - Ruff formatting and lint: passed.
 - Strict mypy: passed.
 - The complete reviewed loop passed in installed Google Chrome against a local form fixture.

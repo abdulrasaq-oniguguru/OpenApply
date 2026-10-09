@@ -53,7 +53,34 @@ def test_tools_json_is_agent_readable() -> None:
     commands = {item["command"] for item in payload["tools"]}
     assert "openapply start" in commands
     assert "openapply worker list --json" in commands
+    assert "openapply worker platforms --json" in commands
     assert all(item["access"] for item in payload["tools"])
+
+
+def test_worker_platforms_json_lists_public_sources() -> None:
+    result = runner.invoke(app, ["worker", "platforms", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["schema"] == "openapply-platforms/v1"
+    sources = {item["key"]: item for item in payload["platforms"]}
+    assert sources["himalayas"]["approach"] == "public_json_api"
+    assert sources["we-work-remotely"]["approach"] == "public_rss"
+    assert sources["outlier"]["approach"] == "public_page"
+
+
+def test_worker_discover_platform_defaults_to_profile_role() -> None:
+    CandidateService().save(make_profile())
+
+    result = runner.invoke(app, ["worker", "discover-platform", "remotive", "--json"])
+
+    assert result.exit_code == 0, result.output
+    task = json.loads(result.output)
+    assert task["type"] == "discover_platform"
+    assert task["payload"] == {
+        "platform": "remotive",
+        "query": "Backend Engineer",
+    }
 
 
 def test_worker_list_json_exposes_task_state() -> None:

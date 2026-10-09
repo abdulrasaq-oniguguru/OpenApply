@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head><title>Searchable roles</title></head>
+  <body>
+    <input type="search" placeholder="Search roles">
+    <a href="/jobs/backend-engineer" data-title="backend engineer">Backend Engineer</a>
+    <a href="/jobs/sales-lead" data-title="sales lead">Sales Lead</a>
+    <script>
+      document.querySelector('input').addEventListener('input', (event) => {
+        const query = event.target.value.toLowerCase();
+        document.querySelectorAll('a').forEach((link) => {
+          if (!link.dataset.title.includes(query)) link.remove();
+        });
+      });
+    </script>
+  </body>
+</html>

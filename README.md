@@ -45,6 +45,8 @@ openapply apply <form-url> --job-url <posting-url>   # when the posting is a dif
 openapply apply <form-url> --preview-only            # fill and preview; never submits
 openapply interview start                            # build your evidence and work stories
 openapply worker discover <career-page-url>           # queue bounded job discovery
+openapply worker platforms --json                    # list built-in public job sources
+openapply worker discover-platform remotive --query "software engineer"
 openapply worker run                                 # process durable work; safe to restart
 openapply agent report --timezone Africa/Lagos --details
 ```
@@ -66,6 +68,13 @@ operating guide for coding agents.
 
 After changing the profile or upgrading matching rules, `openapply worker rematch --json`
 recomputes every saved opportunity locally. It makes no browser or AI call.
+
+Built-in discovery supports Mercor, Outlier AI, DataAnnotation, Alignerr, micro1, Himalayas,
+Remotive, Wellfound and We Work Remotely. It uses rendered public pages where appropriate,
+Himalayas and Remotive's public JSON APIs, and We Work Remotely's public RSS feed. A role query
+keeps the queue focused; if it is omitted, OpenApply uses the first preferred role in the saved
+profile when available. Mercor accepts both `/jobs/list_<id>/<slug>` links and legacy
+`/explore?listingId=<id>` links.
 
 The app combines conversation, an interview, confirmed evidence, discovery tasks, matched
 opportunities and the application ledger. It binds to loopback by default. On a VPS, keep that
@@ -265,6 +274,9 @@ sign in, do it in the visible window yourself; OpenApply never reads or stores p
 - **Forms inside iframes and multi-step forms are not supported yet.** If no fields are found
   but the page has embedded frames, you are told. Greenhouse- and Lever-specific handling is the
   next milestone.
+- **Outlier availability is location-dependent.** Its public opportunity page may return a
+  location restriction instead of listings. OpenApply reports an empty discovery result and
+  does not try to bypass the platform restriction.
 - **Redirects are followed by OpenApply, not by the browser.** Chromium only lets us see the
   first request of a redirect chain, so handing a redirect back would let the rest of the chain
   run unobserved (it could end at an internal address). Each hop is checked against the URL
