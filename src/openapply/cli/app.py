@@ -14,6 +14,7 @@ from openapply import __version__
 from openapply.cli.commands import agent as agent_cmd
 from openapply.cli.commands import analyze as analyze_cmd
 from openapply.cli.commands import apply as apply_cmd
+from openapply.cli.commands import autopilot as autopilot_cmd
 from openapply.cli.commands import browser as browser_cmd
 from openapply.cli.commands import doctor as doctor_cmd
 from openapply.cli.commands import interview as interview_cmd
@@ -37,6 +38,7 @@ app.command("start")(start_cmd.start)
 app.command("tools")(tools_cmd.tools)
 app.command("analyze")(analyze_cmd.analyze)
 app.command("apply")(apply_cmd.apply)
+app.add_typer(autopilot_cmd.app, name="autopilot")
 app.add_typer(browser_cmd.app, name="browser")
 app.add_typer(providers_cmd.app, name="providers")
 app.add_typer(profile_cmd.app, name="profile")

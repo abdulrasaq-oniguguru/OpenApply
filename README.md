@@ -97,11 +97,11 @@ Expected extraction failures are recorded immediately instead of leaving a task 
 an abrupt process or machine failure still relies on the five-minute recovery lease.
 
 Discovery is intentionally bounded to a company career/listing page you provide. It queues
-likely job URLs and analyzes them through the existing browser/provider pipeline. The worker
-never submits automatically. From a matched opportunity, the desk can prepare a local draft,
-save immutable edits, authorize one exact revision and queue one reviewed submission. A changed
-form invalidates approval, and an uncertain dispatch is never retried blindly. The existing
-interactive `openapply apply` path remains available.
+likely job URLs and analyzes them through the existing browser/provider pipeline. By default,
+the worker only submits a draft after you authorize that exact revision. The desk also offers an
+optional, expiring Autopilot policy described below. A changed form invalidates approval, and an
+uncertain dispatch is never retried blindly. The existing interactive `openapply apply` path
+remains available.
 
 Application runs now save an immutable snapshot of the prepared answers and the observed
 outcome. Ask the app “what did you apply to today?” for a short report, then “show exact
@@ -266,8 +266,32 @@ What it will and will not do:
   application itself still goes. OpenApply cannot verify that an employer received an
   application; it shows you what the page said afterwards.
 
-The browser session is fresh and ephemeral (no cookies or saved logins). If a site needs you to
-sign in, do it in the visible window yourself; OpenApply never reads or stores passwords.
+### Reusable login browser and Autopilot
+
+The local desk can open a dedicated OpenApply browser profile for logins on multiple job sites.
+Enter passwords and one-time codes directly on those sites, then close the browser window. The
+worker can reuse the resulting cookies later; OpenApply never asks for, logs, or sends those
+credentials to an AI provider. This profile is separate from your everyday Chrome profile and
+is private local data. You can also open it from the terminal:
+
+```bash
+openapply browser login https://accounts.google.com/
+```
+
+Autopilot is off by default. Enabling it in the desk requires an explicit confirmation plus:
+
+- one or more allowed job-site hosts;
+- a minimum profile-match score;
+- a per-day submission limit;
+- a one-, seven-, or thirty-day expiry; and
+- an optional remote-only restriction.
+
+Each eligible draft still receives a one-time authorization tied to the exact answers, form
+shape, and destination. The worker checks the standing policy again immediately before recording
+dispatch intent. Sensitive questions, legal acknowledgements, CAPTCHA or browser challenges,
+missing answers, changed forms, disallowed destinations, expired permission, and the daily cap
+all stop unattended submission. `openapply autopilot stop` is a command-line kill switch; it
+revokes unused automatic authorizations and cancels queued Autopilot work.
 
 ## Known limitations and follow-ups
 

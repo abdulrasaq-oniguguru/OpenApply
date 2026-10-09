@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from openapply.applications.answers import AnswerContext
@@ -48,6 +50,24 @@ async def test_simple_application(server: AppServer) -> None:
     assert resume.intent is Intent.RESUME and resume.accept == ".pdf,.docx"
     why = by_label(draft, "Why are you interested")
     assert why.intent is Intent.OPEN_ENDED and why.max_length == 500 and why.required
+
+
+async def test_form_can_open_in_dedicated_persistent_profile(
+    server: AppServer, tmp_path: Path
+) -> None:
+    profile = make_profile()
+    async with open_form_session(
+        f"{server.url}/simple_application.html",
+        allow_local=True,
+        headless=True,
+        profile_dir=tmp_path / "browser-profile",
+    ) as session:
+        draft = await ApplicationEngine(
+            session, profile, AnswerContext(profile=profile)
+        ).scan()
+
+    assert draft.scan.submit_label == "Submit application"
+    assert (tmp_path / "browser-profile").is_dir()
 
 
 async def test_greenhouse_like_form(server: AppServer) -> None:

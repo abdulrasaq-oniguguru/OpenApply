@@ -27,7 +27,11 @@ from playwright.async_api import Locator, Page, async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
-from openapply.browser.browser import SETTLE_TIMEOUT_MS, launch_browser
+from openapply.browser.browser import (
+    SETTLE_TIMEOUT_MS,
+    launch_browser,
+    launch_persistent_browser,
+)
 from openapply.browser.page import BrowserError, normalize_text
 from openapply.browser.policy import MAX_UPLOAD_BYTES, RequestPolicy, first_line
 from openapply.security.text import strip_control_chars
@@ -425,11 +429,17 @@ class PlaywrightFormSession:
 
 @contextlib.asynccontextmanager
 async def open_form_session(
-    url: str, *, allow_local: bool = False, headless: bool = False, timeout_ms: int = 30_000
+    url: str,
+    *,
+    allow_local: bool = False,
+    headless: bool = False,
+    timeout_ms: int = 30_000,
+    profile_dir: Path | None = None,
 ) -> AsyncIterator[PlaywrightFormSession]:
-    """Open ``url`` in a fresh, ephemeral browser context under the shared request policy.
+    """Open ``url`` under the shared request policy.
 
-    Headed by default: a person is expected to look at the page before anything is sent.
+    A supplied ``profile_dir`` reuses the dedicated OpenApply session; otherwise the context is
+    ephemeral. Headed by default because manual application review remains supported.
     """
     try:
         url = validate_job_url(url, allow_local=allow_local)
@@ -439,12 +449,20 @@ async def open_form_session(
         allow_local=allow_local, block_types=SESSION_BLOCKED_TYPES, timeout_ms=timeout_ms
     )
     async with async_playwright() as playwright:
-        browser, _label = await launch_browser(playwright, headless=headless)
         context = None
+        browser = None
         try:
-            context = await browser.new_context(
-                accept_downloads=False, permissions=[], service_workers="block"
-            )
+            if profile_dir is not None:
+                context, _label = await launch_persistent_browser(
+                    playwright,
+                    str(profile_dir),
+                    headless=headless,
+                )
+            else:
+                browser, _label = await launch_browser(playwright, headless=headless)
+                context = await browser.new_context(
+                    accept_downloads=False, permissions=[], service_workers="block"
+                )
             await context.route("**/*", policy.route)
             await context.route_web_socket("**/*", policy.route_ws)
             page = await context.new_page()
@@ -464,5 +482,6 @@ async def open_form_session(
             if context is not None:
                 with contextlib.suppress(PlaywrightError):
                     await context.close()
-            with contextlib.suppress(PlaywrightError):
-                await browser.close()
+            if browser is not None:
+                with contextlib.suppress(PlaywrightError):
+                    await browser.close()

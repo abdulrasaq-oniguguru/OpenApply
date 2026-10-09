@@ -12,6 +12,11 @@
 - `tests/web/test_app.py`: platform discovery is selectable from the local desk.
 - `tests/jobs/test_matcher.py`: mandatory professional credentials and unrelated-role score caps.
 - `tests/worker/test_queue.py`: expected extraction failure, unexpected exception cleanup, and interruption requeue.
+- `tests/browser/test_sessions.py`: dedicated persistent browser-profile metadata and safe login URL handling.
+- `tests/autopilot/test_service.py`: bounded standing permission, host/match gates, daily caps, and revocation.
+- `tests/worker/test_autopilot.py`: eligible analyses prepare automatically, safe drafts receive one-time
+  authorization, and dispatch re-checks the standing policy.
+- `tests/web/test_app.py`: global login-session controls and explicit Autopilot consent endpoints.
 
 ## Workflow scenarios
 
@@ -24,6 +29,12 @@
    official page/API/feed results into bounded analysis tasks without submitting anything.
 7. Both Mercor URL forms (`/jobs/list_.../<slug>` and `/explore?listingId=...`) are
    recognized as one-job URLs, while a plain `/explore` navigation page is rejected.
+8. A person opens any public login URL in OpenApply's dedicated browser profile, signs in
+   directly on that site, and closes the window; OpenApply stores browser state but never asks
+   for or records a password or one-time code.
+9. A confirmed, expiring Autopilot policy may cover several explicitly listed job-site hosts.
+   Only unblocked matches over the score floor are prepared and submitted, subject to a daily
+   cap; sensitive questions, CAPTCHA, changed forms, expiry, or revocation stop the flow.
 
 ## Expected result
 
@@ -31,6 +42,10 @@ All focused tests and the existing suite pass. Ruff, mypy, JavaScript syntax che
 
 ## Validation results
 
+- Autopilot/session/web/worker focused suite: `40 passed, 3 warnings in 16.31s`.
+- Full project suite after reusable-session and Autopilot implementation:
+  `822 passed, 2 skipped, 3 warnings in 371.44s`.
+- `ruff check src tests`, strict `mypy src tests`, and JavaScript syntax validation: passed.
 - Focused platform, worker, CLI and web suite: `75 passed, 2 warnings in 14.15s`.
 - Real-browser fetcher and discovery suite: `23 passed in 40.97s`.
 - Full project suite: `813 passed, 2 skipped, 2 warnings in 304.81s`.

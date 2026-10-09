@@ -11,9 +11,11 @@ Hardening choices (this is the component that reads untrusted web pages):
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 from playwright.async_api import (
     Browser,
+    BrowserContext,
     Page,
     Playwright,
     async_playwright,
@@ -91,6 +93,40 @@ async def launch_browser(playwright: Playwright, *, headless: bool = True) -> tu
             raise BrowserError(f"Could not start {label}: {first_line(exc)}") from exc
         log.info("using %s", label)
         return browser, label
+    raise BrowserNotInstalled(_INSTALL_HINT)
+
+
+async def launch_persistent_browser(
+    playwright: Playwright,
+    user_data_dir: str,
+    *,
+    headless: bool,
+    service_workers: Literal["allow", "block"] = "block",
+) -> tuple[BrowserContext, str]:
+    """Launch the dedicated reusable context without touching the normal Chrome profile."""
+    for channel, label in _BROWSER_CHOICES:
+        try:
+            context = await playwright.chromium.launch_persistent_context(
+                user_data_dir,
+                headless=headless,
+                channel=channel,
+                accept_downloads=False,
+                permissions=[],
+                service_workers=service_workers,
+            )
+        except PlaywrightError as exc:
+            if _is_missing_browser(exc):
+                log.debug("%s not available", label)
+                continue
+            detail = first_line(exc)
+            if "profile" in detail.lower() or "process" in detail.lower():
+                raise BrowserError(
+                    "OpenApply's login browser is already open. Close it before the worker "
+                    "uses the saved session."
+                ) from exc
+            raise BrowserError(f"Could not start {label}: {detail}") from exc
+        log.info("using %s with OpenApply's dedicated profile", label)
+        return context, label
     raise BrowserNotInstalled(_INSTALL_HINT)
 
 

@@ -44,6 +44,8 @@ class Authorization:
     form_signature: str
     expires_at: str
     created_at: str
+    kind: str = "manual"
+    policy_id: str | None = None
     revoked_at: str | None = None
     used_at: str | None = None
 
@@ -180,6 +182,8 @@ def _authorization(row: sqlite3.Row) -> Authorization:
         form_signature=str(row["form_signature"]),
         expires_at=str(row["expires_at"]),
         created_at=str(row["created_at"]),
+        kind=str(row["kind"]),
+        policy_id=str(row["policy_id"]) if row["policy_id"] is not None else None,
         revoked_at=str(row["revoked_at"]) if row["revoked_at"] is not None else None,
         used_at=str(row["used_at"]) if row["used_at"] is not None else None,
     )
@@ -328,7 +332,13 @@ class ApplicationHistoryService:
         *,
         expected_revision: int,
         expires_in: timedelta = timedelta(minutes=30),
+        kind: str = "manual",
+        policy_id: str | None = None,
     ) -> Authorization:
+        if kind not in {"manual", "autopilot"}:
+            raise ValueError("Unknown authorization kind.")
+        if kind == "autopilot" and not policy_id:
+            raise ValueError("Autopilot authorization requires a policy.")
         current, draft = self.load_draft(application_id)
         if current.revision != expected_revision:
             raise ApplicationConflict("The draft changed; review the latest revision first.")
@@ -360,7 +370,7 @@ class ApplicationHistoryService:
             connection.execute(
                 "INSERT INTO application_authorizations "
                 "(id, application_id, revision_id, draft_hash, destination, form_signature, "
-                "expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "expires_at, created_at, kind, policy_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     auth_id,
                     application_id,
@@ -370,6 +380,8 @@ class ApplicationHistoryService:
                     signature,
                     expires_at,
                     created_at,
+                    kind,
+                    policy_id,
                 ),
             )
             connection.execute(
@@ -386,7 +398,33 @@ class ApplicationHistoryService:
             form_signature=signature,
             expires_at=expires_at,
             created_at=created_at,
+            kind=kind,
+            policy_id=policy_id,
         )
+
+    def revoke_autopilot_authorizations(self, policy_id: str) -> int:
+        """Revoke every unused authorization made under a stopped standing policy."""
+        now = utc_now()
+        with self.database.transaction(immediate=True) as connection:
+            rows = connection.execute(
+                "SELECT application_id FROM application_authorizations "
+                "WHERE kind = 'autopilot' AND policy_id = ? AND revoked_at IS NULL "
+                "AND used_at IS NULL",
+                (policy_id,),
+            ).fetchall()
+            result = connection.execute(
+                "UPDATE application_authorizations SET revoked_at = ? "
+                "WHERE kind = 'autopilot' AND policy_id = ? AND revoked_at IS NULL "
+                "AND used_at IS NULL",
+                (now, policy_id),
+            )
+            for row in rows:
+                connection.execute(
+                    "UPDATE applications SET state = 'awaiting_review', updated_at = ? "
+                    "WHERE id = ? AND state IN ('authorized', 'dispatch_queued')",
+                    (now, str(row["application_id"])),
+                )
+        return int(result.rowcount)
 
     def get_authorization(self, authorization_id: str) -> Authorization:
         with self.database.read() as connection:
@@ -435,7 +473,8 @@ class ApplicationHistoryService:
 
     def begin_dispatch(self, application_id: str, authorization_id: str) -> DispatchAttempt:
         """Atomically consume an authorization immediately before the browser submit click."""
-        now = utc_now()
+        now_dt = datetime.now(UTC)
+        now = now_dt.isoformat()
         attempt_id = str(uuid4())
         with self.database.transaction(immediate=True) as connection:
             row = connection.execute(
@@ -458,6 +497,30 @@ class ApplicationHistoryService:
                 row["draft_hash"]
             ) != str(row["current_hash"]):
                 raise ApplicationConflict("The authorized draft is no longer the latest revision.")
+            if str(row["kind"]) == "autopilot":
+                policy_id = str(row["policy_id"] or "")
+                policy = connection.execute(
+                    "SELECT max_daily FROM autopilot_policies WHERE id = ? "
+                    "AND revoked_at IS NULL AND expires_at > ?",
+                    (policy_id, now),
+                ).fetchone()
+                if policy is None:
+                    raise ApplicationConflict(
+                        "Autopilot permission expired or was stopped; nothing was sent."
+                    )
+                day_start = now_dt.replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ).isoformat()
+                used = connection.execute(
+                    "SELECT COUNT(*) AS count FROM submission_attempts s "
+                    "JOIN application_authorizations a ON a.id = s.authorization_id "
+                    "WHERE a.kind = 'autopilot' AND a.policy_id = ? AND s.intent_at >= ?",
+                    (policy_id, day_start),
+                ).fetchone()
+                if used is not None and int(used["count"]) >= int(policy["max_daily"]):
+                    raise ApplicationConflict(
+                        "The Autopilot daily submission limit is reached; nothing was sent."
+                    )
             connection.execute(
                 "INSERT INTO submission_attempts "
                 "(id, application_id, authorization_id, state, intent_at) "

@@ -16,7 +16,7 @@ from pathlib import Path
 from openapply.config.atomic import ensure_private_dir
 from openapply.config.paths import database_path
 
-LATEST_SCHEMA = 3
+LATEST_SCHEMA = 4
 
 _MIGRATION_1 = """
 CREATE TABLE IF NOT EXISTS interview_sessions (
@@ -222,6 +222,35 @@ CREATE INDEX IF NOT EXISTS ix_submission_attempts_app
     ON submission_attempts(application_id, intent_at DESC);
 """
 
+_MIGRATION_4 = """
+ALTER TABLE application_authorizations ADD COLUMN kind TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE application_authorizations ADD COLUMN policy_id TEXT;
+CREATE TABLE IF NOT EXISTS autopilot_policies (
+    id TEXT PRIMARY KEY,
+    allowed_hosts_json TEXT NOT NULL,
+    min_score INTEGER NOT NULL CHECK(min_score BETWEEN 0 AND 100),
+    max_daily INTEGER NOT NULL CHECK(max_daily BETWEEN 1 AND 25),
+    remote_only INTEGER NOT NULL DEFAULT 0 CHECK(remote_only IN (0, 1)),
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_autopilot_policies_active
+    ON autopilot_policies(revoked_at, expires_at, created_at DESC);
+CREATE TABLE IF NOT EXISTS autopilot_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policy_id TEXT NOT NULL REFERENCES autopilot_policies(id) ON DELETE CASCADE,
+    opportunity_id TEXT REFERENCES opportunities(id) ON DELETE SET NULL,
+    application_id TEXT REFERENCES applications(id) ON DELETE SET NULL,
+    decision TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_autopilot_events_policy
+    ON autopilot_events(policy_id, created_at DESC);
+"""
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -275,6 +304,12 @@ class Database:
                 connection.execute(
                     "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                     (3, utc_now()),
+                )
+            if current < 4:
+                connection.executescript(_MIGRATION_4)
+                connection.execute(
+                    "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                    (4, utc_now()),
                 )
             connection.commit()
         if os.name != "nt":

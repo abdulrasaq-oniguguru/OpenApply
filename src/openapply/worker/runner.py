@@ -16,9 +16,11 @@ from openapply.applications.history import (
     form_signature,
 )
 from openapply.applications.service import plan_application
+from openapply.autopilot.service import AutopilotService
 from openapply.browser.browser import PlaywrightFetcher
 from openapply.browser.forms import open_form_session
 from openapply.browser.page import BrowserError
+from openapply.browser.sessions import BrowserSessionStore
 from openapply.candidate.service import CandidateService
 from openapply.config.settings import load_settings
 from openapply.discovery.service import (
@@ -30,6 +32,7 @@ from openapply.discovery.service import (
 from openapply.discovery.sources import PlatformDiscoveryService
 from openapply.interviews.service import InterviewService
 from openapply.jobs.extractor import ExtractionError
+from openapply.jobs.match_models import JobMatch
 from openapply.jobs.models import JobPosting
 from openapply.jobs.service import JobService, MatchService
 from openapply.providers.base import AgentProvider
@@ -58,6 +61,11 @@ class Worker:
         self.queue = TaskQueue(self.database)
         self.opportunities = OpportunityRepository(self.database)
         self.applications = ApplicationHistoryService(self.database)
+        self.sessions = BrowserSessionStore(
+            profile_dir=self.database.path.parent / "browser-profile",
+            metadata_path=self.database.path.parent / "browser-session.json",
+        )
+        self.autopilot = AutopilotService(self.database, sessions=self.sessions)
         self.owner = owner or f"worker-{uuid4()}"
         self.allow_local = allow_local
         self.headless = headless
@@ -165,10 +173,44 @@ class Worker:
         opportunity_id = self.opportunities.save(
             result.job, matched.match if matched is not None else None
         )
+        policy = self.autopilot.active()
+        autopilot_task_id = None
+        if policy is not None:
+            decision = self.autopilot.evaluate_job(
+                policy,
+                result.job,
+                matched.match if matched is not None else None,
+            )
+            self.autopilot.audit(
+                policy.id,
+                "eligible" if decision.allowed else "skipped",
+                decision.reason,
+                opportunity_id=opportunity_id,
+            )
+            if (
+                decision.allowed
+                and self.applications.latest_for_opportunity(opportunity_id) is None
+                and self.queue.active_with_payload(
+                    "prepare_application", "opportunity_id", opportunity_id
+                )
+                is None
+            ):
+                queued = self.queue.enqueue(
+                    "prepare_application",
+                    {
+                        "opportunity_id": opportunity_id,
+                        "autopilot_policy_id": policy.id,
+                    },
+                )
+                autopilot_task_id = queued.id
         self.queue.complete(
             task_id,
             self.owner,
-            {"opportunity_id": opportunity_id, "warnings": result.warnings},
+            {
+                "opportunity_id": opportunity_id,
+                "warnings": result.warnings,
+                "autopilot_task_id": autopilot_task_id,
+            },
         )
 
     def _provider(self, requested: object) -> AgentProvider | None:
@@ -182,6 +224,28 @@ class Worker:
         opportunity_id = str(payload.get("opportunity_id", ""))
         opportunity = self.opportunities.get(opportunity_id)
         job = JobPosting.model_validate(opportunity["job"])
+        policy_id = str(payload.get("autopilot_policy_id", "")) or None
+        policy = self.autopilot.active() if policy_id else None
+        if policy_id:
+            match_data = opportunity.get("match")
+            match = JobMatch.model_validate(match_data) if isinstance(match_data, dict) else None
+            if policy is None or policy.id != policy_id:
+                self.queue.needs_user(
+                    task_id,
+                    self.owner,
+                    "Autopilot permission expired or was stopped; nothing was submitted.",
+                )
+                return
+            decision = self.autopilot.evaluate_job(policy, job, match)
+            if not decision.allowed:
+                self.autopilot.audit(
+                    policy.id,
+                    "prepare_paused",
+                    decision.reason,
+                    opportunity_id=opportunity_id,
+                )
+                self.queue.needs_user(task_id, self.owner, decision.reason)
+                return
         candidate = CandidateService()
         profile = candidate.load()
         if profile is None or candidate.missing_required(profile):
@@ -197,6 +261,7 @@ class Worker:
             form_url,
             allow_local=self.allow_local,
             headless=self.headless,
+            profile_dir=self.sessions.profile_dir if self.sessions.status().ready else None,
         ) as session:
             _engine, draft = await plan_application(
                 session,
@@ -207,6 +272,37 @@ class Worker:
                 knowledge_service=InterviewService(self.database),
             )
         recorded = self.applications.record(profile, draft, job, opportunity_id=opportunity_id)
+        authorization_id = None
+        dispatch_task_id = None
+        autopilot_reason = None
+        if policy is not None:
+            decision = self.autopilot.evaluate_draft(policy, draft)
+            autopilot_reason = decision.reason
+            if decision.allowed:
+                authorization = self.applications.authorize(
+                    recorded.application_id,
+                    expected_revision=recorded.revision,
+                    kind="autopilot",
+                    policy_id=policy.id,
+                )
+                dispatch = self.queue.enqueue(
+                    "dispatch_application",
+                    {
+                        "application_id": recorded.application_id,
+                        "authorization_id": authorization.id,
+                        "autopilot_policy_id": policy.id,
+                    },
+                )
+                self.applications.set_state(recorded.application_id, "dispatch_queued")
+                authorization_id = authorization.id
+                dispatch_task_id = dispatch.id
+            self.autopilot.audit(
+                policy.id,
+                "dispatch_queued" if decision.allowed else "draft_paused",
+                decision.reason,
+                opportunity_id=opportunity_id,
+                application_id=recorded.application_id,
+            )
         self.queue.complete(
             task_id,
             self.owner,
@@ -214,6 +310,9 @@ class Worker:
                 "opportunity_id": opportunity_id,
                 "application_id": recorded.application_id,
                 "revision": recorded.revision,
+                "autopilot_reason": autopilot_reason,
+                "authorization_id": authorization_id,
+                "dispatch_task_id": dispatch_task_id,
             },
         )
 
@@ -260,6 +359,40 @@ class Worker:
                 "The application authorization expired or was revoked; nothing was sent.",
             )
             return
+        policy = None
+        if authorization.kind == "autopilot":
+            policy = self.autopilot.active()
+            if policy is None or policy.id != authorization.policy_id:
+                self.applications.revoke_authorization(authorization_id)
+                self.queue.needs_user(
+                    task_id,
+                    self.owner,
+                    "Autopilot permission expired or was stopped; nothing was sent.",
+                )
+                return
+            with self.database.read() as connection:
+                row = connection.execute(
+                    "SELECT opportunity_id FROM applications WHERE id = ?", (application_id,)
+                ).fetchone()
+            opportunity_id = str(row["opportunity_id"]) if row and row["opportunity_id"] else ""
+            if not opportunity_id:
+                raise ApplicationWorkflowError("Autopilot application lost its opportunity link.")
+            opportunity = self.opportunities.get(opportunity_id)
+            job = JobPosting.model_validate(opportunity["job"])
+            match_data = opportunity.get("match")
+            match = JobMatch.model_validate(match_data) if isinstance(match_data, dict) else None
+            decision = self.autopilot.evaluate_job(policy, job, match)
+            if not decision.allowed:
+                self.applications.revoke_authorization(authorization_id)
+                self.autopilot.audit(
+                    policy.id,
+                    "dispatch_paused",
+                    decision.reason,
+                    opportunity_id=opportunity_id,
+                    application_id=application_id,
+                )
+                self.queue.needs_user(task_id, self.owner, decision.reason)
+                return
         current, approved = self.applications.load_draft(application_id)
         if (
             current.revision_id != authorization.revision_id
@@ -280,6 +413,7 @@ class Worker:
             approved.scan.url,
             allow_local=self.allow_local,
             headless=self.headless,
+            profile_dir=self.sessions.profile_dir if self.sessions.status().ready else None,
         ) as session:
             engine = ApplicationEngine(session, profile, context)
             live = await engine.scan()
@@ -312,7 +446,23 @@ class Worker:
                     f"The live form rejected reviewed values: {names}.",
                 )
                 return
-            attempt = self.applications.begin_dispatch(application_id, authorization_id)
+            if policy is not None:
+                decision = self.autopilot.evaluate_draft(policy, live)
+                if not decision.allowed:
+                    self.applications.revoke_authorization(authorization_id)
+                    self.autopilot.audit(
+                        policy.id,
+                        "dispatch_paused",
+                        decision.reason,
+                        application_id=application_id,
+                    )
+                    self.queue.needs_user(task_id, self.owner, decision.reason)
+                    return
+            try:
+                attempt = self.applications.begin_dispatch(application_id, authorization_id)
+            except ApplicationConflict as exc:
+                self.queue.needs_user(task_id, self.owner, str(exc))
+                return
             try:
                 result = await engine.submit(live, confirmed=True)
             except Exception as exc:

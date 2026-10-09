@@ -77,6 +77,27 @@ main { width: min(1480px, calc(100% - 40px)); margin: 0 auto; padding-bottom: 80
 .career-card p { margin: 5px 0; }
 .career-card small { color: var(--muted); }
 
+.autopilot-panel { margin-bottom: 18px; }
+.autopilot-status { padding: 7px 11px; border: 1px solid var(--muted); color: var(--muted); font: 9px "Trebuchet MS", sans-serif; letter-spacing: .14em; }
+.autopilot-status[data-state="on"] { border-color: var(--green); background: var(--green); color: #fff8ef; }
+.autopilot-status[data-state="waiting"] { border-color: var(--signal); color: var(--signal); }
+.autopilot-grid { display: grid; grid-template-columns: .9fr 1.1fr; }
+.autopilot-grid > * { padding: 26px; }
+.session-control { border-right: 1px solid var(--ink); background: var(--paper-2); }
+.session-control h3 { margin: 0 0 10px; font-size: 29px; font-weight: 500; letter-spacing: -.035em; }
+.session-control > p:not(.micro), .control-detail { color: var(--muted); line-height: 1.45; }
+.session-control > label, .policy-fields label { display: block; margin-top: 18px; font: 9px "Trebuchet MS", sans-serif; text-transform: uppercase; letter-spacing: .1em; }
+.control-line { display: flex; gap: 9px; margin-top: 7px; }
+.control-line input, .policy-fields input, .policy-fields select { width: 100%; border: 1px solid var(--ink); border-radius: 0; background: #faf7ef; color: var(--ink); padding: 11px 12px; }
+.control-line button { flex: 0 0 auto; }
+.control-detail { margin: 12px 0 0; font-size: 13px; }
+.session-forget { margin-top: 13px; padding: 0; color: var(--signal); }
+.policy-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 13px; }
+.policy-fields .wide { grid-column: 1 / -1; margin-top: 0; }
+.policy-fields label:not(.wide) { margin-top: 0; }
+.policy-fields label small { display: block; margin-top: 5px; color: var(--muted); font-size: 8px; line-height: 1.4; text-transform: none; letter-spacing: .03em; }
+.policy-control.is-active .policy-fields, .policy-control.is-active > .confirmation-row, .policy-control.is-active #enable-autopilot { opacity: .45; pointer-events: none; }
+
 .desk-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, .75fr); gap: 18px; align-items: start; }
 .panel { border: 1px solid var(--ink); background: rgba(255,255,255,.18); box-shadow: var(--shadow); }
 .panel-heading { min-height: 70px; padding: 17px 20px; border-bottom: 1px solid var(--ink); display: flex; align-items: center; justify-content: space-between; }
@@ -200,6 +221,11 @@ dialog h2 { margin: 0 0 8px; font-size: 36px; font-weight: 500; }
   .profile-fields { grid-template-columns: 1fr; }
   .profile-fields .wide { grid-column: auto; }
   .profile-career-preview { grid-template-columns: 1fr; }
+  .autopilot-grid { grid-template-columns: 1fr; }
+  .session-control { border-right: 0; border-bottom: 1px solid var(--ink); }
+  .policy-fields { grid-template-columns: 1fr; }
+  .policy-fields .wide { grid-column: auto; }
+  .control-line { display: grid; }
   .review-heading { display: block; }
   .review-heading > p { margin-top: 12px; text-align: left; }
   .discovery-body { grid-template-columns: 1fr; }

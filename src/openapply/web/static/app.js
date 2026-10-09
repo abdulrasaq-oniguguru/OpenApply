@@ -276,6 +276,38 @@ function renderOpportunities(items, profileReady) {
   if (!list.children.length) list.append(node('p', 'ledger-empty', 'No discovered opportunities yet.'));
 }
 
+function renderAutopilot(data) {
+  const session = data.browser_session || { state: 'empty' };
+  const autopilot = data.autopilot || { active: false, policy: null, submissions_today: 0 };
+  const badge = el('autopilot-status');
+  const active = Boolean(autopilot.active && autopilot.policy);
+  const waiting = session.state === 'opening';
+  badge.dataset.state = active ? 'on' : (waiting ? 'waiting' : 'off');
+  badge.textContent = active ? 'ACTIVE' : (waiting ? 'LOGIN OPEN' : 'OFF');
+  el('browser-session-detail').textContent = session.detail || 'No reusable browser session yet.';
+  el('open-login-browser').disabled = waiting;
+  el('open-login-browser').textContent = waiting ? 'Browser open—close when done' : 'Open login browser';
+  el('forget-login-browser').classList.toggle('hidden', session.state === 'empty' || waiting);
+
+  const form = el('autopilot-form');
+  form.classList.toggle('is-active', active);
+  el('stop-autopilot').classList.toggle('hidden', !active);
+  el('enable-autopilot').disabled = session.state !== 'ready' || active;
+  if (active) {
+    const policy = autopilot.policy;
+    el('autopilot-hosts').value = policy.allowed_hosts.join(', ');
+    el('autopilot-score').value = String(policy.min_score);
+    el('autopilot-daily').value = String(policy.max_daily);
+    el('autopilot-remote').checked = policy.remote_only;
+    const expires = new Date(policy.expires_at).toLocaleString();
+    el('autopilot-detail').textContent = `${autopilot.submissions_today} of ${policy.max_daily} used today · expires ${expires}. Sensitive or changed forms still pause.`;
+  } else if (session.state !== 'ready') {
+    el('autopilot-detail').textContent = 'First save a reusable login session. Sensitive questions, CAPTCHA, changed forms, and missing answers always pause.';
+  } else {
+    el('autopilot-detail').textContent = 'Browser session ready. Set exact limits, confirm, then enable unattended work.';
+  }
+}
+
 async function refresh() {
   const data = await api(`/api/state?timezone=${encodeURIComponent(timezone)}`);
   state.data = data;
@@ -286,6 +318,7 @@ async function refresh() {
   renderTasks(data.tasks, data.worker_paused);
   renderProfile(data.profile, data.profile_ready);
   renderOpportunities(data.opportunities, data.profile_ready);
+  renderAutopilot(data);
 }
 
 async function updateEvidence(item, newState) {
@@ -647,6 +680,76 @@ el('discovery-form').addEventListener('submit', async (event) => {
 el('worker-toggle').addEventListener('click', async () => {
   const action = state.data.worker_paused ? 'resume' : 'pause';
   await api(`/api/worker/${action}`, { method: 'POST' });
+  await refresh();
+});
+
+el('open-login-browser').addEventListener('click', async () => {
+  const url = el('login-url').value.trim();
+  const proceed = await showDeskDialog(
+    'A separate visible browser will open. Sign in directly on the website, then close the browser window. OpenApply does not receive your password or one-time code.',
+    { title: 'Open reusable login browser?', kicker: 'Browser session', confirmLabel: 'Open browser', cancelLabel: 'Cancel', tone: 'info' }
+  );
+  if (!proceed) return;
+  try {
+    await api('/api/browser-session/open', { method: 'POST', body: JSON.stringify({ url }) });
+    await refresh();
+  } catch (error) {
+    await showDeskDialog(error.message, { title: 'Login browser could not open' });
+  }
+});
+
+el('forget-login-browser').addEventListener('click', async () => {
+  const proceed = await showDeskDialog(
+    'This deletes OpenApply\'s dedicated browser profile, including all saved job-site cookies. It does not affect your normal Chrome profile.',
+    { title: 'Forget every saved login?', kicker: 'Local browser data', confirmLabel: 'Forget session', cancelLabel: 'Cancel' }
+  );
+  if (!proceed) return;
+  try {
+    await api('/api/browser-session', { method: 'DELETE' });
+    await refresh();
+  } catch (error) {
+    await showDeskDialog(error.message, { title: 'Session could not be forgotten' });
+  }
+});
+
+el('autopilot-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!el('autopilot-confirm').checked) {
+    await showDeskDialog('Tick the standing-permission confirmation after reviewing the limits.', { title: 'Confirmation required' });
+    return;
+  }
+  const allowedHosts = el('autopilot-hosts').value.split(',').map((item) => item.trim()).filter(Boolean);
+  const proceed = await showDeskDialog(
+    `OpenApply may submit without asking again only on: ${allowedHosts.join(', ')}. It will stop at the daily limit, expiry, sensitive questions, CAPTCHA, or a changed form.`,
+    { title: 'Enable unattended applications?', kicker: 'Standing permission', confirmLabel: 'Enable Autopilot', cancelLabel: 'Cancel' }
+  );
+  if (!proceed) return;
+  try {
+    await api('/api/autopilot/enable', {
+      method: 'POST',
+      body: JSON.stringify({
+        allowed_hosts: allowedHosts,
+        min_score: Number(el('autopilot-score').value),
+        max_daily: Number(el('autopilot-daily').value),
+        duration_days: Number(el('autopilot-days').value),
+        remote_only: el('autopilot-remote').checked,
+        confirmed: true
+      })
+    });
+    el('autopilot-confirm').checked = false;
+    await refresh();
+  } catch (error) {
+    await showDeskDialog(error.message, { title: 'Autopilot could not start' });
+  }
+});
+
+el('stop-autopilot').addEventListener('click', async () => {
+  const proceed = await showDeskDialog(
+    'Queued Autopilot work and every unused automatic authorization will be cancelled. A submission already in progress may still need to be checked in the application ledger.',
+    { title: 'Stop Autopilot now?', kicker: 'Kill switch', confirmLabel: 'Stop Autopilot', cancelLabel: 'Keep running' }
+  );
+  if (!proceed) return;
+  await api('/api/autopilot/disable', { method: 'POST' });
   await refresh();
 });
 

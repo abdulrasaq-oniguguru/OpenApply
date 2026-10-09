@@ -106,6 +106,9 @@
   };
 
   const warnings = [];
+  if (document.querySelector('.g-recaptcha, .h-captcha, iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="challenges.cloudflare.com"]')) {
+    warnings.push("A CAPTCHA or browser challenge was detected; a person must complete it.");
+  }
   const all = Array.from(document.querySelectorAll("input, select, textarea"));
   if (all.some((el) => (el.getAttribute("type") || "").toLowerCase() === "password")) {
     warnings.push("A password field was found and left alone; sign in yourself if the site requires it.");

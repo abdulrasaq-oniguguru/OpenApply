@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import secrets
+import threading
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
@@ -19,6 +21,9 @@ from openapply.applications.history import (
     ApplicationHistoryService,
     ApplicationWorkflowError,
 )
+from openapply.autopilot.service import AutopilotError, AutopilotService
+from openapply.browser.page import BrowserError
+from openapply.browser.sessions import BrowserSessionStore, start_login_process
 from openapply.candidate.models import CandidateProfile
 from openapply.candidate.parser import LocalResumeTextExtractor, ResumeExtractionError
 from openapply.candidate.resume_import import (
@@ -37,6 +42,7 @@ from openapply.conversations.service import ConversationService
 from openapply.discovery.platforms import get_platform_source, platform_source_documents
 from openapply.interviews.models import EvidenceState
 from openapply.interviews.service import InterviewService
+from openapply.jobs.match_models import JobMatch
 from openapply.jobs.matcher import score_match
 from openapply.jobs.models import JobPosting
 from openapply.providers.errors import ProviderError
@@ -134,6 +140,23 @@ class DispatchRequest(BaseModel):
     confirmed: bool
 
 
+class BrowserLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=8, max_length=2000)
+
+
+class AutopilotRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    allowed_hosts: list[str] = Field(min_length=1, max_length=20)
+    min_score: int = Field(default=75, ge=60, le=100)
+    max_daily: int = Field(default=3, ge=1, le=25)
+    duration_days: int = Field(default=7, ge=1, le=30)
+    remote_only: bool = True
+    confirmed: bool
+
+
 def create_app(database: Database | None = None) -> FastAPI:
     db = database or Database()
     db.initialize()
@@ -143,6 +166,11 @@ def create_app(database: Database | None = None) -> FastAPI:
     task_queue = TaskQueue(db)
     opportunities = OpportunityRepository(db)
     application_history = ApplicationHistoryService(db)
+    sessions = BrowserSessionStore(
+        profile_dir=db.path.parent / "browser-profile",
+        metadata_path=db.path.parent / "browser-session.json",
+    )
+    autopilot = AutopilotService(db, sessions=sessions)
     csrf_token = secrets.token_urlsafe(32)
     templates = Jinja2Templates(directory=str(_ROOT / "templates"))
 
@@ -185,6 +213,9 @@ def create_app(database: Database | None = None) -> FastAPI:
             default_provider = load_settings().default_provider
         except ConfigError:
             default_provider = None
+        active_policy = autopilot.active()
+        latest_policy = active_policy or autopilot.latest()
+        session_status = sessions.status()
         return {
             "conversation_id": conversation_id,
             "messages": [
@@ -202,6 +233,112 @@ def create_app(database: Database | None = None) -> FastAPI:
             ),
             "profile": profile.model_dump(mode="json") if profile is not None else None,
             "default_provider": default_provider,
+            "browser_session": asdict(session_status),
+            "autopilot": {
+                "policy": latest_policy.document() if latest_policy is not None else None,
+                "active": active_policy is not None,
+                "submissions_today": (
+                    autopilot.submissions_today(active_policy.id) if active_policy else 0
+                ),
+            },
+        }
+
+    @app.post("/api/browser-session/open", dependencies=[Depends(require_csrf)])
+    async def open_browser_session(body: BrowserLoginRequest) -> dict[str, object]:
+        was_paused = task_queue.is_paused()
+        task_queue.set_paused(True)
+        if any(task.state.value == "running" for task in task_queue.list(limit=500)):
+            if not was_paused:
+                task_queue.set_paused(False)
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "A worker task is still using the browser. Wait for it to finish, then retry.",
+            )
+        try:
+            session_status = start_login_process(body.url, store=sessions)
+        except BrowserError as exc:
+            if not was_paused:
+                task_queue.set_paused(False)
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+        if not was_paused:
+            def resume_after_login() -> None:
+                while sessions.status().state == "opening":
+                    time.sleep(0.5)
+                task_queue.set_paused(False)
+
+            threading.Thread(target=resume_after_login, daemon=True).start()
+        return asdict(session_status)
+
+    @app.delete("/api/browser-session", dependencies=[Depends(require_csrf)])
+    async def forget_browser_session() -> dict[str, bool]:
+        if autopilot.active() is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Stop Autopilot before forgetting the browser session.",
+            )
+        try:
+            sessions.clear()
+        except BrowserError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        return {"forgotten": True}
+
+    @app.post("/api/autopilot/enable", dependencies=[Depends(require_csrf)])
+    async def enable_autopilot(body: AutopilotRequest) -> dict[str, object]:
+        if not sessions.status().ready:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Save a login browser session before enabling Autopilot.",
+            )
+        profile = CandidateService().load()
+        if profile is None or CandidateService.missing_required(profile):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Complete your candidate profile before enabling Autopilot.",
+            )
+        try:
+            policy = autopilot.enable(**body.model_dump())
+        except AutopilotError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        queued = 0
+        for opportunity in opportunities.list(limit=500):
+            job = JobPosting.model_validate(opportunity["job"])
+            match_data = opportunity.get("match")
+            match = JobMatch.model_validate(match_data) if isinstance(match_data, dict) else None
+            decision = autopilot.evaluate_job(policy, job, match)
+            autopilot.audit(
+                policy.id,
+                "eligible" if decision.allowed else "skipped",
+                decision.reason,
+                opportunity_id=str(opportunity["id"]),
+            )
+            if not decision.allowed:
+                continue
+            opportunity_id = str(opportunity["id"])
+            if application_history.latest_for_opportunity(opportunity_id) is not None:
+                continue
+            if task_queue.active_with_payload(
+                "prepare_application", "opportunity_id", opportunity_id
+            ) is not None:
+                continue
+            task_queue.enqueue(
+                "prepare_application",
+                {"opportunity_id": opportunity_id, "autopilot_policy_id": policy.id},
+            )
+            queued += 1
+        return {"policy": policy.document(), "queued": queued}
+
+    @app.post("/api/autopilot/disable", dependencies=[Depends(require_csrf)])
+    async def disable_autopilot() -> dict[str, object]:
+        policy = autopilot.revoke()
+        if policy is None:
+            return {"stopped": True, "cancelled_tasks": 0, "revoked_authorizations": 0}
+        cancelled = task_queue.cancel_autopilot(policy.id)
+        revoked = application_history.revoke_autopilot_authorizations(policy.id)
+        return {
+            "stopped": True,
+            "cancelled_tasks": cancelled,
+            "revoked_authorizations": revoked,
         }
 
     @app.get("/api/providers")

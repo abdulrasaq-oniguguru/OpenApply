@@ -76,7 +76,31 @@ TOOLS: tuple[ToolDescription, ...] = (
         "name": "run_worker",
         "command": "openapply worker run",
         "purpose": "Process queued discovery, matching, and reviewed application work.",
-        "access": "background processing; never auto-submits",
+        "access": "background processing; exact review or active Autopilot policy required",
+    },
+    {
+        "name": "browser_login_session",
+        "command": "openapply browser login <public-login-url>",
+        "purpose": "Let the person sign in directly in OpenApply's reusable browser profile.",
+        "access": "opens visible browser; credentials never enter the CLI",
+    },
+    {
+        "name": "browser_session_status",
+        "command": "openapply browser session --json",
+        "purpose": "Check whether OpenApply's reusable browser profile is ready.",
+        "access": "read-only; never exposes cookies",
+    },
+    {
+        "name": "autopilot_status",
+        "command": "openapply autopilot status --json",
+        "purpose": "Inspect standing unattended-application limits and today's usage.",
+        "access": "read-only",
+    },
+    {
+        "name": "autopilot_stop",
+        "command": "openapply autopilot stop",
+        "purpose": "Revoke standing permission and cancel unused automatic work.",
+        "access": "revokes permission; safe kill switch",
     },
     {
         "name": "reviewed_application",

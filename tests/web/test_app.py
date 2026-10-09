@@ -9,8 +9,10 @@ from fastapi.testclient import TestClient
 from openapply.applications.answers import AnswerContext
 from openapply.applications.history import ApplicationHistoryService
 from openapply.applications.service import plan_application
+from openapply.browser.sessions import BrowserSessionStore
 from openapply.candidate.service import CandidateService
 from openapply.config.settings import load_settings
+from openapply.jobs.match_models import JobMatch, Recommendation
 from openapply.providers.models import ProviderStatus
 from openapply.providers.registry import ProviderRegistry
 from openapply.storage.database import Database
@@ -214,6 +216,67 @@ def test_desk_lists_and_queues_builtin_platform_discovery(tmp_path: Path) -> Non
         "platform": "remotive",
         "query": "Backend Engineer",
     }
+
+
+def test_desk_enables_and_stops_bounded_global_autopilot(tmp_path: Path) -> None:
+    database = Database(tmp_path / "agent.db")
+    CandidateService().save(make_profile())
+    sessions = BrowserSessionStore(
+        profile_dir=tmp_path / "browser-profile",
+        metadata_path=tmp_path / "browser-session.json",
+    )
+    sessions.mark_ready("https://accounts.google.com/")
+    match = JobMatch(
+        job_id="job-1",
+        overall_score=90,
+        confidence=1.0,
+        recommendation=Recommendation.STRONG_MATCH,
+    )
+    opportunity_id = OpportunityRepository(database).save(make_job(), match)
+    client = TestClient(create_app(database))
+    page = client.get("/")
+    token = re.search(r'name="openapply-csrf" content="([^"]+)"', page.text).group(1)  # type: ignore[union-attr]
+    headers = {"X-OpenApply-CSRF": token}
+
+    assert 'id="autopilot-form"' in page.text
+    unconfirmed = client.post(
+        "/api/autopilot/enable",
+        headers=headers,
+        json={
+            "allowed_hosts": ["careers.example.com", "wellfound.com"],
+            "min_score": 75,
+            "max_daily": 2,
+            "duration_days": 7,
+            "remote_only": True,
+            "confirmed": False,
+        },
+    )
+    assert unconfirmed.status_code == 422
+    enabled = client.post(
+        "/api/autopilot/enable",
+        headers=headers,
+        json={
+            "allowed_hosts": ["careers.example.com", "wellfound.com"],
+            "min_score": 75,
+            "max_daily": 2,
+            "duration_days": 7,
+            "remote_only": True,
+            "confirmed": True,
+        },
+    )
+    assert enabled.status_code == 200
+    assert enabled.json()["queued"] == 1
+    queued = next(
+        task
+        for task in client.get("/api/state").json()["tasks"]
+        if task["payload"].get("opportunity_id") == opportunity_id
+    )
+    assert queued["payload"]["autopilot_policy_id"] == enabled.json()["policy"]["id"]
+
+    stopped = client.post("/api/autopilot/disable", headers=headers)
+    assert stopped.status_code == 200
+    assert stopped.json()["cancelled_tasks"] == 1
+    assert client.get("/api/state").json()["autopilot"]["active"] is False
 
 
 async def test_web_review_authorize_and_queue_dispatch(tmp_path: Path) -> None:

@@ -6,9 +6,11 @@ from pathlib import Path
 import pytest
 
 from openapply.applications.history import ApplicationHistoryService
+from openapply.browser.sessions import BrowserSessionStore
 from openapply.candidate.service import CandidateService
 from openapply.discovery.service import DiscoveryResult
 from openapply.jobs.extractor import NotAJobPosting
+from openapply.jobs.match_models import JobMatch, Recommendation
 from openapply.storage.database import Database
 from openapply.storage.repositories import OpportunityRepository
 from openapply.worker.models import TaskState
@@ -216,3 +218,64 @@ async def test_worker_prepares_then_dispatches_an_authorized_revision_once(
     assert worker.queue.get(dispatch_task.id).state is TaskState.COMPLETED
     assert dispatch_session.submitted == 1
     assert history.dispatch_attempt(authorization.id) is not None
+
+
+async def test_worker_autopilot_prepares_authorizes_and_dispatches_with_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENAPPLY_HOME", str(tmp_path / "home"))
+    CandidateService().save(make_profile())
+    database = Database(tmp_path / "agent.db")
+    form_url = "https://careers.example.com/apply"
+    sessions_store = BrowserSessionStore(
+        profile_dir=tmp_path / "browser-profile",
+        metadata_path=tmp_path / "browser-session.json",
+    )
+    sessions_store.mark_ready(form_url)
+    match = JobMatch(
+        job_id="job-1",
+        overall_score=90,
+        confidence=1.0,
+        recommendation=Recommendation.STRONG_MATCH,
+    )
+    opportunity_id = OpportunityRepository(database).save(
+        make_job(source_url=form_url, application_url=form_url), match
+    )
+    raw_scan = scan_of(
+        raw("oa-0", "text", "First name", required=True),
+        action="https://careers.example.com/submit",
+    )
+    prepare_session = FakeSession(raw_scan)
+    dispatch_session = FakeSession(raw_scan)
+    browser_sessions = iter([prepare_session, dispatch_session])
+
+    @contextlib.asynccontextmanager
+    async def fake_open_form_session(*args: object, **kwargs: object) -> AsyncIterator[FakeSession]:
+        yield next(browser_sessions)
+
+    monkeypatch.setattr("openapply.worker.runner.open_form_session", fake_open_form_session)
+    worker = Worker(database, owner="worker-auto")
+    policy = worker.autopilot.enable(
+        allowed_hosts=["careers.example.com"],
+        min_score=75,
+        max_daily=2,
+        duration_days=7,
+        remote_only=True,
+        confirmed=True,
+    )
+    prepare_task = worker.queue.enqueue(
+        "prepare_application",
+        {"opportunity_id": opportunity_id, "autopilot_policy_id": policy.id},
+    )
+
+    assert await worker.run_once()
+    prepared = worker.queue.get(prepare_task.id)
+    assert prepared.state is TaskState.COMPLETED
+    authorization_id = str(prepared.checkpoint["authorization_id"])
+    authorization = ApplicationHistoryService(database).get_authorization(authorization_id)
+    assert authorization.kind == "autopilot"
+
+    assert await worker.run_once()
+    dispatch = next(item for item in worker.queue.list() if item.type == "dispatch_application")
+    assert worker.queue.get(dispatch.id).state is TaskState.COMPLETED
+    assert dispatch_session.submitted == 1

@@ -67,6 +67,32 @@ class TaskQueue:
                 ("true" if paused else "false", utc_now()),
             )
 
+    def cancel_autopilot(self, policy_id: str) -> int:
+        """Cancel queued work for one revoked policy; running work re-checks before submit."""
+        now = utc_now()
+        cancelled = 0
+        with self.database.transaction(immediate=True) as connection:
+            rows = connection.execute(
+                "SELECT id, payload_json FROM tasks WHERE state IN "
+                "('queued','waiting_provider','needs_user')"
+            ).fetchall()
+            for row in rows:
+                payload = json.loads(str(row["payload_json"]))
+                if str(payload.get("autopilot_policy_id", "")) != policy_id:
+                    continue
+                connection.execute(
+                    "UPDATE tasks SET state = 'cancelled', lease_owner = NULL, "
+                    "lease_expires_at = NULL, last_error = ?, updated_at = ? WHERE id = ?",
+                    ("Autopilot permission was stopped.", now, str(row["id"])),
+                )
+                connection.execute(
+                    "INSERT INTO task_events(task_id, event, detail, created_at) "
+                    "VALUES (?, 'cancelled', ?, ?)",
+                    (str(row["id"]), "Autopilot permission was stopped.", now),
+                )
+                cancelled += 1
+        return cancelled
+
     def get(self, task_id: str) -> Task:
         with self.database.read() as connection:
             row = connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()

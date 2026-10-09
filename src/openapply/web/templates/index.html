@@ -87,6 +87,48 @@
       </form>
     </section>
 
+    <section class="panel autopilot-panel">
+      <div class="panel-heading">
+        <div><span class="index">AUTOPILOT</span><h2>Unattended applications</h2></div>
+        <span id="autopilot-status" class="autopilot-status" data-state="off">OFF</span>
+      </div>
+      <div class="autopilot-grid">
+        <div class="session-control">
+          <p class="micro">1 / Reusable login browser</p>
+          <h3>Sign in once, directly on each site.</h3>
+          <p>OpenApply uses a separate browser profile across job sites. Passwords and one-time codes stay inside that visible browser and are never sent to the AI CLI.</p>
+          <label for="login-url">Login or job-site URL</label>
+          <div class="control-line">
+            <input id="login-url" type="url" value="https://accounts.google.com/" required>
+            <button id="open-login-browser" class="secondary" type="button">Open login browser</button>
+          </div>
+          <button id="forget-login-browser" class="text-button session-forget hidden" type="button">FORGET SAVED SESSION</button>
+          <p id="browser-session-detail" class="control-detail">No reusable browser session yet.</p>
+        </div>
+        <form id="autopilot-form" class="policy-control">
+          <p class="micro">2 / Standing permission</p>
+          <div class="policy-fields">
+            <label class="wide">Allowed job-site hosts
+              <input id="autopilot-hosts" type="text" placeholder="work.mercor.com, wellfound.com" required>
+              <small>List every site Autopilot may submit to. Subdomains are included.</small>
+            </label>
+            <label>Minimum match score<input id="autopilot-score" type="number" min="60" max="100" value="75"></label>
+            <label>Maximum per day<input id="autopilot-daily" type="number" min="1" max="25" value="3"></label>
+            <label>Permission length
+              <select id="autopilot-days"><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option></select>
+            </label>
+          </div>
+          <label class="confirmation-row"><input id="autopilot-remote" type="checkbox" checked><span>Only apply to roles confirmed as remote.</span></label>
+          <label class="confirmation-row danger-row"><input id="autopilot-confirm" type="checkbox"><span>I authorize OpenApply to submit matching applications unattended within these exact limits. I can stop it at any time.</span></label>
+          <div class="split-actions">
+            <button id="stop-autopilot" class="danger hidden" type="button">Stop Autopilot</button>
+            <button id="enable-autopilot" class="primary" type="submit">Enable Autopilot</button>
+          </div>
+          <p id="autopilot-detail" class="control-detail">Sensitive questions, legal acknowledgements, CAPTCHA, changed forms, and missing answers always pause for you.</p>
+        </form>
+      </div>
+    </section>
+
     <section class="desk-grid">
       <article class="panel conversation-panel">
         <div class="panel-heading">

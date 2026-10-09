@@ -31,3 +31,16 @@ def database_path() -> Path:
 
 def resumes_dir() -> Path:
     return app_dir() / "resumes"
+
+
+def browser_profile_dir() -> Path:
+    """Dedicated browser profile used only by OpenApply.
+
+    It can contain login cookies, so it lives beside the other private application data and
+    is never mixed with the person's everyday Chrome profile.
+    """
+    return app_dir() / "browser-profile"
+
+
+def browser_session_path() -> Path:
+    return app_dir() / "browser-session.json"
