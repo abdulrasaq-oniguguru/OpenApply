@@ -32,6 +32,8 @@ or Ollama. OpenApply never asks for an API key.
 
 ```bash
 openapply doctor                      # what's installed and ready on this machine
+openapply tools --json                # stable command catalog for agents
+openapply start                       # run the private desk and worker together
 openapply providers list
 openapply providers set-default ollama --model qwen3.5:9b
 openapply setup                       # create your local candidate profile
@@ -49,12 +51,21 @@ openapply agent report --timezone Africa/Lagos --details
 
 ## Personal application desk
 
-Install the optional web dependencies, then start the private app:
+Install the optional web dependencies, then start the private app and worker together:
 
 ```bash
 uv sync --extra web
-openapply agent serve                 # http://127.0.0.1:8080
+openapply start                       # http://127.0.0.1:8080
 ```
+
+`openapply agent serve` and `openapply worker run` remain available when you want the two
+processes separately. Agents can call `openapply tools --json` for the supported command catalog
+and `openapply worker list --json` for durable task state, errors and leases. The repository also
+ships [`skills/cli-anything-openapply/SKILL.md`](skills/cli-anything-openapply/SKILL.md) as a short
+operating guide for coding agents.
+
+After changing the profile or upgrading matching rules, `openapply worker rematch --json`
+recomputes every saved opportunity locally. It makes no browser or AI call.
 
 The app combines conversation, an interview, confirmed evidence, discovery tasks, matched
 opportunities and the application ledger. It binds to loopback by default. On a VPS, keep that
@@ -71,6 +82,10 @@ The worker is a separate process, so restarting the web page does not lose queue
 ```bash
 openapply worker run
 ```
+
+Expected extraction failures are recorded immediately instead of leaving a task leased as
+“running”. If the combined launcher is interrupted, its current task is returned to the queue;
+an abrupt process or machine failure still relies on the five-minute recovery lease.
 
 Discovery is intentionally bounded to a company career/listing page you provide. It queues
 likely job URLs and analyzes them through the existing browser/provider pipeline. The worker
@@ -156,7 +171,12 @@ itself factor by factor.
   with no stated place cannot be a mismatch or raise a relocation question).
 - **Caps are explicit.** A recommendation can be capped below what the raw score suggests (no
   required skill covered, half the required skills missing, experience far below the ask,
-  location that does not work). When a cap changes the outcome, the reason is shown.
+  location that does not work, or a title unrelated to your target roles). Regulated roles such
+  as physician, oncologist, nurse, pharmacist, dentist and lawyer are also checked for explicit
+  qualification evidence in education, certifications and work history. A missing mandatory
+  credential is a blocker and caps the displayed score; OpenApply says “not found in your
+  profile” rather than claiming you do not hold it. When a cap changes the outcome, the reason
+  is shown.
 - **Eligibility is never guessed.** If a posting says it will not sponsor visas and your profile
   *explicitly* says you need sponsorship, that is a blocker. If you have not answered, you are
   shown a question under "Needs your confirmation" instead. The same applies to relocation,

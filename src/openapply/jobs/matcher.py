@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from openapply.candidate.models import CandidateProfile, RemotePreference
+from openapply.jobs.credentials import check_credentials
 from openapply.jobs.eligibility import check_eligibility
 from openapply.jobs.experience import candidate_years, required_years
 from openapply.jobs.match_models import (
@@ -29,6 +30,8 @@ WEIGHTS = {"skills": 0.45, "experience": 0.20, "location": 0.15, "preferences": 
 STRONG_THRESHOLD = 75
 POSSIBLE_THRESHOLD = 55
 WEAK_THRESHOLD = 35
+BLOCKED_SCORE_CAP = 25
+UNRELATED_ROLE_SCORE_CAP = 45
 
 # How much each kind of job skill matters, and how much credit each kind of evidence earns.
 _SKILL_WEIGHT = {"required": 1.0, "context": 0.4, "preferred": 0.3}
@@ -59,6 +62,7 @@ class _Notes:
     gaps: list[str] = field(default_factory=list)
     concerns: list[str] = field(default_factory=list)
     confirm: list[str] = field(default_factory=list)
+    role_mismatch: bool = False
 
 
 def _pct(value: float) -> int:
@@ -313,6 +317,7 @@ def _role_check(
         return 0.8, f"The title is close to your target role '{best_role}'."
     if best >= 0.34:
         return 0.5, f"The title partly overlaps your target role '{best_role}'."
+    notes.role_mismatch = True
     notes.concerns.append(f"'{job.title}' is not one of your target roles.")
     return 0.1, f"The title does not resemble your target roles ({', '.join(roles)})."
 
@@ -427,7 +432,10 @@ def score_match(
     location = _location(profile, job, notes)
     preferences = _preferences(profile, job, notes)
     eligibility = check_eligibility(profile, job)
+    credentials = check_credentials(profile, job)
     notes.concerns.extend(eligibility.concerns)
+    notes.strengths.extend(f"Credential confirmed: {item}" for item in credentials.matched)
+    notes.gaps.extend(credentials.blockers)
     for question in eligibility.needs_confirmation:
         if question not in notes.confirm:
             notes.confirm.append(question)
@@ -435,24 +443,47 @@ def score_match(
     factors = [skills.factor, experience, location, preferences]
     known = [f for f in factors if f.score is not None]
     known_weight = sum(f.weight for f in known)
-    overall = (
+    raw_overall = (
         _pct(sum(f.weight * (f.score or 0) for f in known) / known_weight / 100)
         if known_weight
         else 0
     )
     confidence = round(known_weight / sum(f.weight for f in factors), 2)
+    blockers = [*eligibility.blockers, *credentials.blockers]
+    overall = raw_overall
+    score_constraints: list[str] = []
+    if blockers and overall > BLOCKED_SCORE_CAP:
+        overall = BLOCKED_SCORE_CAP
+        score_constraints.append(
+            f"The raw factor score was {raw_overall}%, capped at {BLOCKED_SCORE_CAP}% because "
+            "a mandatory requirement is not met."
+        )
+    elif notes.role_mismatch and overall > UNRELATED_ROLE_SCORE_CAP:
+        overall = UNRELATED_ROLE_SCORE_CAP
+        score_constraints.append(
+            f"The raw factor score was {raw_overall}%, capped at {UNRELATED_ROLE_SCORE_CAP}% "
+            "because the role does not match your target roles."
+        )
 
     rationale = [
         f"Overall {overall}% from {len(known)} of {len(factors)} factors "
         f"(confidence {round(confidence * 100)}%)."
     ]
+    rationale.extend(score_constraints)
     recommendation = _base_recommendation(overall)
     if not known:
         recommendation = Recommendation.WEAK_MATCH
         rationale.append("Not enough information in the profile or posting to assess a match.")
-    if eligibility.blockers:
+    if blockers:
         recommendation = Recommendation.DO_NOT_APPLY
-        rationale.extend(eligibility.blockers)
+        rationale.extend(blockers)
+    elif notes.role_mismatch:
+        recommendation = _cap(
+            recommendation,
+            Recommendation.WEAK_MATCH,
+            "The role does not match any target role in your profile.",
+            rationale,
+        )
     if skills.required_total and skills.required_covered == 0:
         recommendation = _cap(
             recommendation, Recommendation.WEAK_MATCH,
@@ -499,7 +530,7 @@ def score_match(
         strengths=notes.strengths,
         gaps=notes.gaps,
         concerns=notes.concerns,
-        blockers=eligibility.blockers,
+        blockers=blockers,
         needs_confirmation=notes.confirm,
         factors=factors,
         rationale=rationale,

@@ -20,7 +20,9 @@ from openapply.cli.commands import interview as interview_cmd
 from openapply.cli.commands import profile as profile_cmd
 from openapply.cli.commands import providers as providers_cmd
 from openapply.cli.commands import setup as setup_cmd
+from openapply.cli.commands import start as start_cmd
 from openapply.cli.commands import telegram as telegram_cmd
+from openapply.cli.commands import tools as tools_cmd
 from openapply.cli.commands import worker as worker_cmd
 from openapply.logging_setup import configure_logging
 
@@ -31,6 +33,8 @@ app = typer.Typer(
 )
 app.command("doctor")(doctor_cmd.doctor)
 app.command("setup")(setup_cmd.setup)
+app.command("start")(start_cmd.start)
+app.command("tools")(tools_cmd.tools)
 app.command("analyze")(analyze_cmd.analyze)
 app.command("apply")(apply_cmd.apply)
 app.add_typer(browser_cmd.app, name="browser")

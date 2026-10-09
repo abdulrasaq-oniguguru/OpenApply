@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -20,8 +21,9 @@ from openapply.browser.forms import open_form_session
 from openapply.browser.page import BrowserError
 from openapply.candidate.service import CandidateService
 from openapply.config.settings import load_settings
-from openapply.discovery.service import DiscoveryService
+from openapply.discovery.service import DiscoveryService, is_likely_job_detail_url, is_mercor_url
 from openapply.interviews.service import InterviewService
+from openapply.jobs.extractor import ExtractionError
 from openapply.jobs.models import JobPosting
 from openapply.jobs.service import JobService, MatchService
 from openapply.providers.base import AgentProvider
@@ -31,6 +33,7 @@ from openapply.providers.errors import (
     ProviderRateLimited,
 )
 from openapply.providers.registry import ProviderRegistry
+from openapply.providers.structured import StructuredOutputError
 from openapply.storage.database import Database, utc_now
 from openapply.storage.repositories import OpportunityRepository
 from openapply.worker.queue import TaskQueue
@@ -82,14 +85,22 @@ class Worker:
                 linked_id=task.id,
             )
             self.queue.needs_user(task.id, self.owner, exc.message)
+        except asyncio.CancelledError:
+            self.queue.release(task.id, self.owner, "Worker stopped before the task finished.")
+            raise
         except (
             ProviderError,
             BrowserError,
             ApplicationWorkflowError,
+            ExtractionError,
+            StructuredOutputError,
             ValueError,
             KeyError,
         ) as exc:
             self.queue.fail(task.id, self.owner, str(exc))
+        except Exception as exc:
+            self.queue.fail(task.id, self.owner, f"Unexpected worker error: {exc}")
+            raise
         return True
 
     async def _discover(self, task_id: str, payload: dict[str, object]) -> None:
@@ -111,6 +122,12 @@ class Worker:
         )
 
     async def _analyze(self, task_id: str, payload: dict[str, object]) -> None:
+        url = str(payload.get("url", ""))
+        if is_mercor_url(url) and not is_likely_job_detail_url(url):
+            raise ValueError(
+                "Mercor URL is not a single job posting; expected "
+                "https://work.mercor.com/jobs/list_<id>/<job-slug>."
+            )
         settings = load_settings()
         provider_name = str(payload.get("provider") or settings.default_provider or "")
         if not provider_name:
@@ -118,9 +135,7 @@ class Worker:
                 "openapply", "Choose a default provider before running job analysis."
             )
         provider = ProviderRegistry.from_settings(settings).get(provider_name)
-        result = await JobService(PlaywrightFetcher(), provider).analyze(
-            str(payload.get("url", ""))
-        )
+        result = await JobService(PlaywrightFetcher(), provider).analyze(url)
         profile = CandidateService().load()
         matched = None
         if profile is not None:
@@ -335,3 +350,15 @@ class Worker:
             worked = await self.run_once()
             if not worked:
                 await asyncio.sleep(poll_seconds)
+
+    async def run_until_stopped(self, stop: threading.Event, *, poll_seconds: float = 5.0) -> None:
+        """Run until the combined launcher asks for a graceful stop."""
+        while not stop.is_set():
+            worked = await self.run_once()
+            if worked:
+                continue
+            remaining = poll_seconds
+            while remaining > 0 and not stop.is_set():
+                delay = min(0.25, remaining)
+                await asyncio.sleep(delay)
+                remaining -= delay

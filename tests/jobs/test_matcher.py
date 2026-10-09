@@ -6,6 +6,7 @@ import pytest
 
 from openapply.candidate.models import (
     CandidateProfile,
+    Certification,
     Eligibility,
     Experience,
     Preferences,
@@ -403,3 +404,53 @@ def test_blockers_override_everything_and_are_listed_in_the_rationale() -> None:
     assert m.recommendation is Recommendation.DO_NOT_APPLY
     assert any("Sponsorship is not available" in line for line in m.rationale)  # evidence quoted
     assert any("you need sponsorship" in line for line in m.rationale)
+
+
+@pytest.mark.parametrize("title", ["General Physician", "Oncologist"])
+def test_regulated_medical_role_cannot_score_high_without_credentials(title: str) -> None:
+    job = make_job(
+        title=title,
+        requirements=["3+ years of professional experience"],
+        preferred_requirements=[],
+    )
+
+    match = _match(job=job)
+
+    assert match.overall_score <= 25
+    assert match.recommendation is Recommendation.DO_NOT_APPLY
+    assert any("medical degree or physician licence" in item for item in match.blockers)
+    if title == "Oncologist":
+        assert any("oncology specialist" in item for item in match.blockers)
+
+
+def test_documented_medical_credentials_remove_the_hard_blocker() -> None:
+    profile = make_profile().model_copy(
+        update={
+            "certifications": [
+                Certification(name="Medical licence", issuer="Medical Council"),
+                Certification(name="Board certification in Oncology"),
+            ]
+        }
+    )
+    job = make_job(
+        title="Oncologist",
+        requirements=["Valid medical licence", "Oncology board certification"],
+    )
+
+    match = _match(profile=profile, job=job)
+
+    assert match.blockers == []
+
+
+def test_unrelated_target_role_caps_score_even_when_other_factors_fit() -> None:
+    job = make_job(
+        title="Marketing Manager",
+        requirements=["3+ years of professional experience", "Python"],
+        preferred_requirements=[],
+    )
+
+    match = _match(job=job)
+
+    assert match.overall_score <= 45
+    assert match.recommendation in {Recommendation.WEAK_MATCH, Recommendation.DO_NOT_APPLY}
+    assert any("does not match your target roles" in line for line in match.rationale)

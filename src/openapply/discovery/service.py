@@ -12,6 +12,25 @@ from openapply.security.urls import UnsafeURLError, canonicalize_url, validate_j
 _JOB_HINT = re.compile(
     r"job|career|opening|position|vacan|opportunit|greenhouse|lever|ashby|apply", re.IGNORECASE
 )
+_MERCOR_HOSTS = frozenset({"work.mercor.com", "mercor.com", "www.mercor.com"})
+_MERCOR_JOB_PATH = re.compile(r"^/jobs/list_[A-Za-z0-9_-]+/[^/?#]+/?$")
+_COLLECTION_PATHS = frozenset(
+    {"", "/", "/jobs", "/careers", "/openings", "/positions", "/opportunities", "/explore"}
+)
+
+
+def is_likely_job_detail_url(url: str) -> bool:
+    """Reject known listing/navigation URLs before they consume an analysis task."""
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").casefold()
+    path = parsed.path.rstrip("/").casefold()
+    if host in _MERCOR_HOSTS:
+        return bool(_MERCOR_JOB_PATH.fullmatch(parsed.path))
+    return path not in _COLLECTION_PATHS
+
+
+def is_mercor_url(url: str) -> bool:
+    return (urlsplit(url).hostname or "").casefold() in _MERCOR_HOSTS
 
 
 @dataclass(frozen=True)
@@ -45,6 +64,8 @@ class DiscoveryService:
             try:
                 safe = validate_job_url(link.href)
             except UnsafeURLError:
+                continue
+            if not is_likely_job_detail_url(safe):
                 continue
             found.setdefault(canonicalize_url(safe), safe)
         return DiscoveryResult(

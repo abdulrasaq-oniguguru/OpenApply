@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -6,6 +7,7 @@ import pytest
 
 from openapply.applications.history import ApplicationHistoryService
 from openapply.candidate.service import CandidateService
+from openapply.jobs.extractor import NotAJobPosting
 from openapply.storage.database import Database
 from openapply.storage.repositories import OpportunityRepository
 from openapply.worker.models import TaskState
@@ -53,6 +55,69 @@ def test_active_payload_lookup_deduplicates_ui_tasks(tmp_path: Path) -> None:
 
     assert found is not None and found.id == queued.id
     assert queue.active_with_payload("prepare_application", "opportunity_id", "job-2") is None
+
+
+async def test_expected_analysis_failure_clears_the_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker = Worker(Database(tmp_path / "agent.db"), owner="worker-1")
+    task = worker.queue.enqueue("analyze_job", {"url": "https://example.com/jobs"})
+
+    async def not_a_job(task_id: str, payload: dict[str, object]) -> None:
+        raise NotAJobPosting("not a single job")
+
+    monkeypatch.setattr(worker, "_analyze", not_a_job)
+
+    assert await worker.run_once()
+    failed = worker.queue.get(task.id)
+    assert failed.state is TaskState.FAILED
+    assert failed.lease_owner is None and failed.lease_expires_at is None
+
+
+async def test_unexpected_worker_error_fails_task_before_propagating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker = Worker(Database(tmp_path / "agent.db"), owner="worker-1")
+    task = worker.queue.enqueue("analyze_job", {"url": "https://example.com/job"})
+
+    async def crash(task_id: str, payload: dict[str, object]) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(worker, "_analyze", crash)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await worker.run_once()
+    failed = worker.queue.get(task.id)
+    assert failed.state is TaskState.FAILED
+    assert failed.lease_owner is None and failed.lease_expires_at is None
+
+
+async def test_worker_interruption_requeues_task_immediately(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker = Worker(Database(tmp_path / "agent.db"), owner="worker-1")
+    task = worker.queue.enqueue("analyze_job", {"url": "https://example.com/job"})
+
+    async def cancel(task_id: str, payload: dict[str, object]) -> None:
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(worker, "_analyze", cancel)
+
+    with pytest.raises(asyncio.CancelledError):
+        await worker.run_once()
+    released = worker.queue.get(task.id)
+    assert released.state is TaskState.QUEUED
+    assert released.lease_owner is None and released.lease_expires_at is None
+
+
+async def test_non_detail_mercor_url_fails_without_starting_provider(tmp_path: Path) -> None:
+    worker = Worker(Database(tmp_path / "agent.db"), owner="worker-1")
+    task = worker.queue.enqueue("analyze_job", {"url": "https://work.mercor.com/explore"})
+
+    assert await worker.run_once()
+    failed = worker.queue.get(task.id)
+    assert failed.state is TaskState.FAILED
+    assert failed.last_error is not None and "not a single job posting" in failed.last_error
 
 
 async def test_worker_prepares_then_dispatches_an_authorized_revision_once(

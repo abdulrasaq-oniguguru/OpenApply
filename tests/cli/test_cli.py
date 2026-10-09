@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from typer.testing import CliRunner
 
+from openapply.candidate.service import CandidateService
 from openapply.cli.app import app
 from openapply.config.settings import load_settings
 from openapply.providers.models import ProviderStatus
 from openapply.providers.registry import ProviderRegistry
+from openapply.storage.repositories import OpportunityRepository
+from tests.jobs.builders import make_job, make_profile
 
 runner = CliRunner()
 
@@ -37,6 +42,53 @@ def test_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     assert "openapply" in result.output
+
+
+def test_tools_json_is_agent_readable() -> None:
+    result = runner.invoke(app, ["tools", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["schema"] == "openapply-tools/v1"
+    commands = {item["command"] for item in payload["tools"]}
+    assert "openapply start" in commands
+    assert "openapply worker list --json" in commands
+    assert all(item["access"] for item in payload["tools"])
+
+
+def test_worker_list_json_exposes_task_state() -> None:
+    queued = runner.invoke(app, ["worker", "add-job", "https://example.com/jobs/1", "--json"])
+    assert queued.exit_code == 0, queued.output
+    task_id = json.loads(queued.output)["id"]
+
+    result = runner.invoke(app, ["worker", "list", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["schema"] == "openapply-tasks/v1"
+    assert payload["tasks"][0]["id"] == task_id
+    assert payload["tasks"][0]["state"] == "queued"
+
+
+def test_worker_rematch_refreshes_saved_scores_without_ai() -> None:
+    CandidateService().save(make_profile())
+    repository = OpportunityRepository()
+    opportunity_id = repository.save(
+        make_job(
+            title="General Physician",
+            requirements=["3+ years of professional experience"],
+            preferred_requirements=[],
+        )
+    )
+
+    result = runner.invoke(app, ["worker", "rematch", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["updated"] == 1
+    stored = repository.get(opportunity_id)["match"]
+    assert isinstance(stored, dict)
+    assert stored["overall_score"] <= 25
+    assert stored["recommendation"] == "do_not_apply"
 
 
 def test_doctor_succeeds_with_a_usable_provider(fake_detect: list[ProviderStatus]) -> None:

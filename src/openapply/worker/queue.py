@@ -151,6 +151,10 @@ class TaskQueue:
     def fail(self, task_id: str, owner: str, error: str) -> None:
         self._transition(task_id, owner, TaskState.FAILED, error=error, event="failed")
 
+    def release(self, task_id: str, owner: str, reason: str) -> None:
+        """Return interrupted work to the queue and clear its lease immediately."""
+        self._transition(task_id, owner, TaskState.QUEUED, error=reason, event="released")
+
     def needs_user(self, task_id: str, owner: str, error: str) -> None:
         self._transition(task_id, owner, TaskState.NEEDS_USER, error=error, event="needs_user")
 
