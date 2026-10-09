@@ -23,6 +23,14 @@ dependencies = [
     "platformdirs>=4.2",
     "tomli-w>=1.0",
     "playwright>=1.63.0",
+    "tzdata>=2025.2; platform_system == 'Windows'",
+]
+
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.115",
+    "jinja2>=3.1",
+    "uvicorn>=0.34",
 ]
 
 [project.scripts]
@@ -47,6 +55,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openapply"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/openapply/web/templates" = "openapply/web/templates"
+"src/openapply/web/static" = "openapply/web/static"
 
 [tool.ruff]
 line-length = 100

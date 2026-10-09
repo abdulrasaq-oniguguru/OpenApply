@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Reviewed application fixture</title></head>
+<body>
+  <main>
+    <h1>Backend Engineer application</h1>
+    <form action="/reviewed-submit" method="post">
+      <label>First name <input name="first_name" autocomplete="given-name" required></label>
+      <label>Email <input type="email" name="email" autocomplete="email" required></label>
+      <label>Why do you want this job?
+        <textarea name="why" maxlength="500" required></textarea>
+      </label>
+      <button type="submit">Send application</button>
+    </form>
+  </main>
+</body>
+</html>

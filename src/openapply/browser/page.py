@@ -25,12 +25,20 @@ class BrowserNotInstalled(BrowserError):
 
 
 @dataclass(frozen=True)
+class PageLink:
+    text: str
+    href: str
+
+
+@dataclass(frozen=True)
 class FetchedPage:
     url: str  # what the user asked for
     final_url: str  # after redirects
     title: str | None
     text: str  # visible text, normalized
     json_ld: list[dict[str, Any]] = field(default_factory=list)  # JobPosting objects only
+    links: list[PageLink] = field(default_factory=list)  # rendered <a href>, capped
+    person_ld: list[dict[str, Any]] = field(default_factory=list)  # Person objects only
 
 
 class PageFetcher(Protocol):
@@ -45,30 +53,30 @@ def normalize_text(raw: str, *, limit: int = MAX_PAGE_CHARS) -> str:
     return text[:limit]
 
 
-def _is_job_posting(node: dict[str, Any]) -> bool:
+def _has_type(node: dict[str, Any], wanted: str) -> bool:
     kind = node.get("@type")
     kinds = kind if isinstance(kind, list) else [kind]
-    return any(isinstance(k, str) and k.lower() == "jobposting" for k in kinds)
+    return any(isinstance(k, str) and k.lower() == wanted for k in kinds)
 
 
-def _walk(node: Any, found: list[dict[str, Any]]) -> None:
+def _walk(node: Any, found: list[dict[str, Any]], wanted: str = "jobposting") -> None:
     if isinstance(node, list):
         for item in node:
-            _walk(item, found)
+            _walk(item, found, wanted)
     elif isinstance(node, dict):
-        if _is_job_posting(node):
+        if _has_type(node, wanted):
             found.append(node)
-        _walk(node.get("@graph"), found)
+        _walk(node.get("@graph"), found, wanted)
 
 
-def parse_json_ld(blocks: list[str]) -> list[dict[str, Any]]:
-    """Pick ``JobPosting`` objects out of raw ``application/ld+json`` script bodies."""
+def parse_json_ld(blocks: list[str], wanted: str = "jobposting") -> list[dict[str, Any]]:
+    """Pick objects of one ``@type`` (default ``JobPosting``) out of raw ld+json script bodies."""
     found: list[dict[str, Any]] = []
     for block in blocks[:MAX_JSON_LD_BLOCKS]:
         if len(block) > MAX_JSON_LD_BLOCK_CHARS:
             continue  # defence in depth: the page-side script already filters these out
         try:
-            _walk(json.loads(block), found)
+            _walk(json.loads(block), found, wanted)
         except (json.JSONDecodeError, RecursionError):
             continue
     return found

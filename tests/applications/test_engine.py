@@ -383,6 +383,7 @@ async def test_an_optional_pre_ticked_consent_blocks_until_the_user_decides() ->
     with pytest.raises(ApplicationError, match="unresolved"):
         await engine.submit(draft, confirmed=True)
     assert session.submitted == 0
+    assert "explicitly confirm" in (await engine.set_user_answer(draft, "oa-0", "") or "")
 
     # either explicit decision settles it: untick...
     assert await engine.set_user_answer(draft, "oa-0", "false") is None

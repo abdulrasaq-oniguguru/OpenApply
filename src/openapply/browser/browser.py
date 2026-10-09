@@ -32,6 +32,7 @@ from openapply.browser.page import (
     BrowserError,
     BrowserNotInstalled,
     FetchedPage,
+    PageLink,
     normalize_text,
     parse_json_ld,
 )
@@ -50,6 +51,11 @@ _VISIBLE_TEXT_JS = "(max) => document.body ? document.body.innerText.slice(0, ma
 _JSON_LD_JS = """({blocks, chars}) => Array.from(
     document.querySelectorAll('script[type="application/ld+json"]')
 ).slice(0, blocks).map(s => s.textContent || '').filter(t => t.length <= chars)"""
+MAX_LINKS = 300
+MAX_LINK_CHARS = 500
+_LINKS_JS = """({limit, chars}) => Array.from(document.querySelectorAll('a[href]')).slice(0, limit)
+    .map(a => [(a.innerText || '').trim().slice(0, 80), a.href])
+    .filter(([, h]) => h.length <= chars)"""
 _INSTALL_HINT = (
     "No usable browser found (Playwright Chromium, Google Chrome or Microsoft Edge). "
     "Run `openapply browser install`."
@@ -145,12 +151,21 @@ class PlaywrightFetcher:
             blocks = await page.evaluate(
                 _JSON_LD_JS, {"blocks": MAX_JSON_LD_BLOCKS, "chars": MAX_JSON_LD_BLOCK_CHARS}
             )
+            raw_links = await page.evaluate(
+                _LINKS_JS, {"limit": MAX_LINKS, "chars": MAX_LINK_CHARS}
+            )
             return FetchedPage(
                 url=url,
                 final_url=final_url,
                 title=(await page.title()).strip() or None,
                 text=text,
                 json_ld=parse_json_ld([b for b in blocks if isinstance(b, str)]),
+                links=[
+                    PageLink(text=t, href=h)
+                    for t, h in raw_links
+                    if isinstance(t, str) and isinstance(h, str)
+                ],
+                person_ld=parse_json_ld([b for b in blocks if isinstance(b, str)], "person"),
             )
         except PlaywrightError as exc:
             raise BrowserError(f"Reading the page failed: {first_line(exc)}") from exc

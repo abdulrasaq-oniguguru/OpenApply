@@ -28,6 +28,7 @@ from openapply.providers.errors import (
 from openapply.providers.registry import ProviderRegistry
 from openapply.providers.structured import StructuredOutputError
 from openapply.security.urls import UnsafeURLError, validate_job_url
+from openapply.storage.repositories import OpportunityRepository
 
 console = Console()
 err = Console(stderr=True)
@@ -143,6 +144,7 @@ def analyze(
             raise _fail(exc.message) from exc
         job_match = matched.match
         warnings += matched.warnings
+    OpportunityRepository().save(result.job, job_match)
 
     for warning in warnings:
         _warn(warning)

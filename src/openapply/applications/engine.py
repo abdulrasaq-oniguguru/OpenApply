@@ -146,13 +146,17 @@ class ApplicationDraft:
             f"{there.netloc or action}"
         )
 
-    def blockers(self) -> list[tuple[ApplicationField, str]]:
-        """Why the application cannot be submitted yet (empty means nothing is missing)."""
+    def blockers(self, *, require_applied: bool = True) -> list[tuple[ApplicationField, str]]:
+        """Why the application cannot proceed (empty means nothing is missing).
+
+        Durable drafts are reviewed before they are written into a browser, so callers checking
+        review readiness pass ``require_applied=False``. Submission keeps the stricter default.
+        """
         out: list[tuple[ApplicationField, str]] = []
         for f in self.scan.fields:
             a = self.answers.get(f.id)
             usable = a is not None and a.status in {*_USED, AnswerStatus.PREFILLED}
-            if a is not None and a.status in _USED and not a.applied:
+            if require_applied and a is not None and a.status in _USED and not a.applied:
                 out.append((f, a.reason or "the value could not be set on the page"))
             elif f.required and not usable:
                 reason = a.reason if a and a.reason else "required, and no answer yet"
@@ -320,6 +324,12 @@ class ApplicationEngine:
             return None
         if isinstance(value, list):
             return "this field takes a single value"
+        if (
+            f.sensitivity in {Sensitivity.HIGH, Sensitivity.REQUIRES_USER}
+            and f.current_value
+            and value == ""
+        ):
+            return "the page pre-set this answer; explicitly confirm it or change it"
         if f.type in {FieldType.SELECT, FieldType.RADIO}:
             if value != "" and value not in {o.value for o in f.options}:
                 return "choose one of the listed options"

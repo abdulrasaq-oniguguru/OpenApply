@@ -10,11 +10,13 @@ from __future__ import annotations
 import json
 
 from openapply.candidate.models import CandidateProfile
+from openapply.interviews.models import KnowledgeContext
 from openapply.jobs.models import JobPosting
 from openapply.prompts.common import build_prompt
 from openapply.prompts.match_analysis import job_content, minimal_profile
 
 PROFILE_LABEL = "CANDIDATE PROFILE"
+EVIDENCE_LABEL = "CONFIRMED CANDIDATE EVIDENCE"
 QUESTION_LABEL = "APPLICATION QUESTION"
 UNTRUSTED_LABEL = "JOB AND QUESTION"
 
@@ -64,6 +66,7 @@ def build_application_answer_prompt(
     max_chars: int,
     years_of_experience: float | None,
     cover_letter: bool = False,
+    knowledge: KnowledgeContext | None = None,
 ) -> str:
     profile_json = json.dumps(
         minimal_profile(profile, years_of_experience), ensure_ascii=False, indent=2
@@ -71,9 +74,21 @@ def build_application_answer_prompt(
     untrusted = [job_content(job), "", f"{QUESTION_LABEL}: {question}"]
     if help_text:
         untrusted.append(f"Help text shown with the question: {help_text}")
+    context = [(PROFILE_LABEL, profile_json)]
+    if knowledge is not None and knowledge.evidence:
+        evidence = [
+            {
+                "id": item.id,
+                "kind": item.kind,
+                "summary": item.claim.get("summary", ""),
+                "source_quote": item.source_quote,
+            }
+            for item in knowledge.evidence
+        ]
+        context.append((EVIDENCE_LABEL, json.dumps(evidence, ensure_ascii=False, indent=2)))
     return build_prompt(
         task=_task(max_chars, cover_letter),
-        context=[(PROFILE_LABEL, profile_json)],
+        context=context,
         untrusted_label=UNTRUSTED_LABEL,
         untrusted_content="\n".join(untrusted),
         reminder=_REMINDER,

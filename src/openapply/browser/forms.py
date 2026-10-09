@@ -58,6 +58,31 @@ _EFFECTIVE_ACTION_JS = """(el) => {
   if (el.hasAttribute('formaction')) return el.formAction || null;
   return el.form && el.form.action ? el.form.action : null;
 }"""
+_EFFECTIVE_METHOD_JS = """(el) => {
+  if (el.hasAttribute('formmethod')) return (el.formMethod || 'get').toLowerCase();
+  return el.form ? (el.form.method || 'get').toLowerCase() : 'get';
+}"""
+_INSTALL_SUBMIT_GUARD_JS = """({action, method}) => {
+  window.__openapplySubmitBlocked = null;
+  const guard = (event) => {
+    const form = event.target;
+    const submitter = event.submitter;
+    const currentAction = submitter && submitter.hasAttribute('formaction')
+      ? (submitter.formAction || null)
+      : (form && form.action ? form.action : null);
+    const currentMethod = submitter && submitter.hasAttribute('formmethod')
+      ? (submitter.formMethod || 'get').toLowerCase()
+      : (form ? (form.method || 'get').toLowerCase() : 'get');
+    if (currentAction !== action || currentMethod !== method) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      window.__openapplySubmitBlocked = {action: currentAction, method: currentMethod};
+    }
+    document.removeEventListener('submit', guard, true);
+  };
+  document.addEventListener('submit', guard, true);
+}"""
+_SUBMIT_GUARD_RESULT_JS = "() => window.__openapplySubmitBlocked || null"
 KINDS = frozenset(
     {
         "text",
@@ -324,6 +349,11 @@ class PlaywrightFormSession:
                 raise BrowserError(
                     "The form's destination changed after you reviewed it, so nothing was sent."
                 )
+            approved_method = await button.evaluate(_EFFECTIVE_METHOD_JS)
+            await self._page.evaluate(
+                _INSTALL_SUBMIT_GUARD_JS,
+                {"action": current, "method": approved_method},
+            )
             before = self._page.url
             # Page scripts run between the click and the browser's own post, so the destination
             # is enforced on the wire, not just checked here: during this window a POST to any
@@ -338,6 +368,19 @@ class PlaywrightFormSession:
                 with contextlib.suppress(PlaywrightTimeout, PlaywrightError):
                     await self._page.wait_for_load_state("networkidle", timeout=SUBMIT_SETTLE_MS)
                 await self._page.wait_for_timeout(500)
+            blocked_submit = await self._page.evaluate(_SUBMIT_GUARD_RESULT_JS)
+            if isinstance(blocked_submit, dict):
+                attempted = str(blocked_submit.get("action") or "an unknown destination")
+                outcome = (
+                    "Nothing was sent."
+                    if posts.sent == 0
+                    else "Some requests did reach the confirmed site, but OpenApply cannot "
+                    "confirm the application itself did; check the site before relying on it."
+                )
+                raise BrowserError(
+                    f"The form changed its destination or method during the click to {attempted}; "
+                    f"{outcome}"
+                )
             after, excerpt = await self._excerpt()
         except PlaywrightTimeout as exc:
             raise BrowserError("Timed out clicking the submit button.") from exc

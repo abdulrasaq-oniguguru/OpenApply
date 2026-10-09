@@ -2,9 +2,10 @@
 
 A local-first AI job application assistant that uses the AI tools **you already have**.
 
-> **Status: Milestone 5 of 6.** Provider detection, your local candidate profile, reading job
-> postings, scoring how well you match them, and filling in application forms for your review
-> work today. Platform-specific adapters (Greenhouse, Lever) and application history are next.
+> **Status: alpha.** Provider detection, the local candidate profile, reading and matching job
+> postings, reviewed form filling, application history, a private personal-agent app, interviews,
+> bounded career-page discovery and a resumable worker work today. Platform-specific multi-step
+> adapters and automatic submission policies are still planned.
 
 ## Problem
 
@@ -40,13 +41,65 @@ openapply analyze <job-url> --no-ai   # deterministic score only (no extra AI ca
 openapply apply <form-url>            # fill the form, review it, then (maybe) submit
 openapply apply <form-url> --job-url <posting-url>   # when the posting is a different page
 openapply apply <form-url> --preview-only            # fill and preview; never submits
+openapply interview start                            # build your evidence and work stories
+openapply worker discover <career-page-url>           # queue bounded job discovery
+openapply worker run                                 # process durable work; safe to restart
+openapply agent report --timezone Africa/Lagos --details
 ```
+
+## Personal application desk
+
+Install the optional web dependencies, then start the private app:
+
+```bash
+uv sync --extra web
+openapply agent serve                 # http://127.0.0.1:8080
+```
+
+The app combines conversation, an interview, confirmed evidence, discovery tasks, matched
+opportunities and the application ledger. It binds to loopback by default. On a VPS, keep that
+default and use an SSH tunnel; the current alpha is not an authenticated public website.
+
+The worker is a separate process, so restarting the web page does not lose queued work:
+
+```bash
+openapply worker run
+```
+
+Discovery is intentionally bounded to a company career/listing page you provide. It queues
+likely job URLs and analyzes them through the existing browser/provider pipeline. The worker
+never submits automatically. From a matched opportunity, the desk can prepare a local draft,
+save immutable edits, authorize one exact revision and queue one reviewed submission. A changed
+form invalidates approval, and an uncertain dispatch is never retried blindly. The existing
+interactive `openapply apply` path remains available.
+
+Application runs now save an immutable snapshot of the prepared answers and the observed
+outcome. Ask the app “what did you apply to today?” for a short report, then “show exact
+answers” for the saved draft. “Sent but unverified” means the submit flow completed but
+OpenApply has no employer receipt.
+
+### Optional Telegram channel
+
+Telegram uses the same conversation and history as the personal app. Create a bot through
+Telegram, keep its token in the process environment, then pair one private chat:
+
+```bash
+export OPENAPPLY_TELEGRAM_BOT_TOKEN="..."
+openapply telegram pair
+openapply telegram run --timezone Africa/Lagos
+```
+
+Pairing codes expire after 15 minutes and work once. Groups and unpaired users are ignored.
+Telegram can request reports, details and interview questions, but cannot approve an
+application. Message content sent through this option is necessarily shared with Telegram.
 
 ## Privacy
 
 Candidate information stays on your machine by default (`~/.openapply/`, or `OPENAPPLY_HOME`).
-There is no OpenApply backend. Text is sent only to the AI tool you choose, and that tool's own
-privacy terms apply to it. Logs redact bearer tokens, cookies, API keys and similar secrets.
+The basic profile remains JSON; interviews, conversations, tasks and application history use a
+private local SQLite database. There is no hosted OpenApply backend. Text is sent only to the AI
+tool you choose and, if you explicitly enable it, Telegram. Those services' privacy terms apply.
+Logs redact bearer tokens, cookies, API keys and similar secrets.
 
 ## Reading job postings
 
@@ -250,6 +303,14 @@ uv run mypy
 Tests mock all subprocess and HTTP calls, so no paid provider is needed.
 
 ## Design notes
+
+For the proposed interview, job discovery, personal conversation app, Telegram reports and
+resumable VPS worker, see the [current-state assessment and technical implementation handoff](docs/personal-agent-implementation-handoff.md).
+For a concise record of what is implemented and the exact next milestone, see the
+[personal-agent progress ledger](docs/personal-agent-progress.md). The handoff records the full
+design; the progress ledger is the live implementation status.
+To validate this checkpoint after cloning onto another computer, follow the
+[other-PC Chrome test](docs/pc-test-checkpoint.md).
 
 - **Prompts go over stdin**, never on the command line, so they don't show up in process lists.
 - **Providers get no tools.** Job pages are untrusted, so provider calls run in an empty

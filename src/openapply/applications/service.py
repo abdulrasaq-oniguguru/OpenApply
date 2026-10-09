@@ -1,4 +1,4 @@
-"""Prepare an application: scan, classify, answer, write, fill. Never submits."""
+"""Plan and prepare applications. Neither operation ever submits."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from openapply.applications.generation import MAX_GENERATED, AnswerGenerator
 from openapply.applications.models import AnswerStatus, FieldAnswer, FieldType, Intent
 from openapply.browser.forms import FormSession
 from openapply.candidate.models import CandidateProfile
+from openapply.interviews.service import InterviewService
 from openapply.jobs.models import JobPosting
 from openapply.providers.base import AgentProvider
 
@@ -25,12 +26,40 @@ async def prepare_application(
     job: JobPosting | None,
     timeout: float | None = None,
     max_generated: int = MAX_GENERATED,
+    knowledge_service: InterviewService | None = None,
 ) -> tuple[ApplicationEngine, ApplicationDraft]:
     """Scan the page and fill it as far as the profile (and, optionally, the AI) allows.
 
     The order matters: deterministic rules first; the AI is consulted only for fields no rule
     recognised and for free-text questions; everything is written into the page last.
     """
+    engine, draft = await plan_application(
+        session,
+        profile,
+        context,
+        provider=provider,
+        job=job,
+        timeout=timeout,
+        max_generated=max_generated,
+        knowledge_service=knowledge_service,
+    )
+    await engine.fill(draft)
+    draft.blocked_hosts = await session.blocked_hosts()
+    return engine, draft
+
+
+async def plan_application(
+    session: FormSession,
+    profile: CandidateProfile,
+    context: AnswerContext,
+    *,
+    provider: AgentProvider | None,
+    job: JobPosting | None,
+    timeout: float | None = None,
+    max_generated: int = MAX_GENERATED,
+    knowledge_service: InterviewService | None = None,
+) -> tuple[ApplicationEngine, ApplicationDraft]:
+    """Read a form and build a reviewable draft without writing candidate data to the page."""
     engine = ApplicationEngine(session, profile, context)
     draft = await engine.scan()
 
@@ -46,7 +75,14 @@ async def prepare_application(
     engine.plan_deterministic(draft)
 
     generator = (
-        AnswerGenerator(provider, profile, job, timeout=timeout, max_answers=max_generated)
+        AnswerGenerator(
+            provider,
+            profile,
+            job,
+            timeout=timeout,
+            max_answers=max_generated,
+            knowledge_service=knowledge_service,
+        )
         if provider is not None
         else None
     )
@@ -62,6 +98,5 @@ async def prepare_application(
         else:
             draft.answers[f.id] = await generator.generate(f)
 
-    await engine.fill(draft)
     draft.blocked_hosts = await session.blocked_hosts()
     return engine, draft

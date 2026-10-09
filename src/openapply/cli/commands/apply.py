@@ -11,6 +11,7 @@ from rich.console import Console
 
 from openapply.applications.answers import AnswerContext
 from openapply.applications.generation import MAX_GENERATED
+from openapply.applications.history import ApplicationHistoryService
 from openapply.applications.service import prepare_application
 from openapply.browser.forms import FormSession, open_form_session
 from openapply.browser.page import BrowserError, BrowserNotInstalled
@@ -21,6 +22,7 @@ from openapply.cli.render import esc
 from openapply.cli.render_application import render_application_preview
 from openapply.cli.review import InputClosed, Outcome, review_loop
 from openapply.config.settings import ConfigError, load_settings
+from openapply.interviews.service import InterviewService
 from openapply.jobs.extractor import ExtractionError
 from openapply.jobs.models import JobPosting
 from openapply.jobs.service import JobService
@@ -97,13 +99,26 @@ async def _run(
                 job=job,
                 timeout=timeout,
                 max_generated=max_answers,
+                knowledge_service=InterviewService(),
             )
+        history = ApplicationHistoryService()
+        recorded = history.record(profile_context.profile, draft, job)
         if preview_only:
             render_application_preview(console, draft, job)
+            history.set_state(recorded.application_id, "previewed")
             return Outcome.PREVIEWED
-        return await review_loop(
+        outcome = await review_loop(
             console, _terminal_ask, engine, draft, session, job, headless=headless
         )
+        if outcome is Outcome.SUBMITTED:
+            history.set_state(
+                recorded.application_id,
+                "submitted_unverified",
+                outcome="The submit flow completed; employer receipt is not verified.",
+            )
+        else:
+            history.set_state(recorded.application_id, "abandoned")
+        return outcome
 
 
 def apply(

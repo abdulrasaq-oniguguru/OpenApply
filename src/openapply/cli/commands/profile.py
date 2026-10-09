@@ -13,9 +13,11 @@ from rich.table import Table
 from openapply.candidate.models import CandidateProfile
 from openapply.candidate.service import CandidateService, ResumeStatus
 from openapply.candidate.storage import ProfileError
+from openapply.cli.commands import profile_import
 
 app = typer.Typer(help="View and edit your candidate profile.", no_args_is_help=True)
 console = Console()
+app.command("import-site")(profile_import.import_site)
 
 UNKNOWN = "[yellow]UNKNOWN (will ask)[/yellow]"
 

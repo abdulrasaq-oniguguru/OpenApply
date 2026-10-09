@@ -11,3 +11,10 @@ dist/
 build/
 *.egg-info/
 .env
+
+# Personal documents must never be committed (this is a public repository)
+/*.pdf
+/*.docx
+/*.doc
+/cv/
+/profile.json

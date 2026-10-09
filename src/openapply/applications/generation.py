@@ -15,6 +15,7 @@ from datetime import date
 
 from openapply.applications.models import AnswerStatus, ApplicationField, FieldAnswer, Intent
 from openapply.candidate.models import CandidateProfile
+from openapply.interviews.service import InterviewService
 from openapply.jobs.experience import candidate_years
 from openapply.jobs.models import JobPosting
 from openapply.prompts.application_answer import build_application_answer_prompt
@@ -105,6 +106,7 @@ class AnswerGenerator:
         timeout: float | None = None,
         max_answers: int = MAX_GENERATED,
         today: date | None = None,
+        knowledge_service: InterviewService | None = None,
     ) -> None:
         self._provider = provider
         self._profile = profile
@@ -112,6 +114,7 @@ class AnswerGenerator:
         self._timeout = timeout
         self._max_answers = max_answers
         self._today = today
+        self._knowledge_service = knowledge_service
         self._made = 0
 
     async def generate(self, f: ApplicationField) -> FieldAnswer:
@@ -131,6 +134,11 @@ class AnswerGenerator:
             max_chars=max_chars,
             years_of_experience=candidate_years(self._profile, self._today or date.today()),
             cover_letter=f.intent is Intent.COVER_LETTER,
+            knowledge=(
+                self._knowledge_service.knowledge_context(f.label)
+                if self._knowledge_service is not None
+                else None
+            ),
         )
         allowed = allowed_links(self._profile, self._job)
         own_email = self._profile.identity.email

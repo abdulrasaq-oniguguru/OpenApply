@@ -11,13 +11,17 @@ from typing import Annotated
 import typer
 
 from openapply import __version__
+from openapply.cli.commands import agent as agent_cmd
 from openapply.cli.commands import analyze as analyze_cmd
 from openapply.cli.commands import apply as apply_cmd
 from openapply.cli.commands import browser as browser_cmd
 from openapply.cli.commands import doctor as doctor_cmd
+from openapply.cli.commands import interview as interview_cmd
 from openapply.cli.commands import profile as profile_cmd
 from openapply.cli.commands import providers as providers_cmd
 from openapply.cli.commands import setup as setup_cmd
+from openapply.cli.commands import telegram as telegram_cmd
+from openapply.cli.commands import worker as worker_cmd
 from openapply.logging_setup import configure_logging
 
 app = typer.Typer(
@@ -32,6 +36,10 @@ app.command("apply")(apply_cmd.apply)
 app.add_typer(browser_cmd.app, name="browser")
 app.add_typer(providers_cmd.app, name="providers")
 app.add_typer(profile_cmd.app, name="profile")
+app.add_typer(interview_cmd.app, name="interview")
+app.add_typer(agent_cmd.app, name="agent")
+app.add_typer(worker_cmd.app, name="worker")
+app.add_typer(telegram_cmd.app, name="telegram")
 
 
 def _version(value: bool) -> None:

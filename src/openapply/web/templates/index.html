@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="openapply-csrf" content="{{ csrf_token }}">
+  <title>OpenApply Desk</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="masthead">
+    <a class="brand" href="/" aria-label="OpenApply Desk">
+      <span class="brand-mark">OA</span>
+      <span><b>OpenApply</b><small>private application desk</small></span>
+    </a>
+    <div class="status-line">
+      <span class="pulse"></span>
+      <span id="worker-status">LOCAL DESK ONLINE</span>
+      <time id="clock"></time>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Your work, represented carefully</p>
+      <h1>One quiet desk for<br><em>the whole search.</em></h1>
+      <p class="lede">Interview your agent. Inspect every claim. See exactly what was prepared and what the site actually confirmed.</p>
+      <div class="today-stamp"><span>TODAY'S LEDGER</span><strong id="today-summary">Loading…</strong></div>
+    </section>
+
+    <section class="desk-grid">
+      <article class="panel conversation-panel">
+        <div class="panel-heading">
+          <div><span class="index">01</span><h2>Conversation</h2></div>
+          <button class="text-button" id="clear-view" type="button">LATEST</button>
+        </div>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <form id="message-form" class="composer">
+          <label for="message-input">Ask for a report, details, or start your interview</label>
+          <div>
+            <textarea id="message-input" rows="2" maxlength="6000" placeholder="What did you apply to today?"></textarea>
+            <button type="submit">Send <span>↗</span></button>
+          </div>
+        </form>
+      </article>
+
+      <aside class="rail">
+        <article class="panel interview-panel">
+          <div class="panel-heading"><div><span class="index">02</span><h2>Interview</h2></div></div>
+          <div id="interview-empty" class="empty-state">
+            <p>Build the evidence behind your applications, one concrete story at a time.</p>
+            <button id="start-interview" class="primary" type="button">Begin interview</button>
+          </div>
+          <form id="interview-form" class="interview-form hidden">
+            <p id="interview-progress" class="micro"></p>
+            <h3 id="interview-question"></h3>
+            <textarea id="interview-answer" rows="5" maxlength="12000" placeholder="Tell the story in your own words…"></textarea>
+            <button class="primary" type="submit">Save & continue</button>
+          </form>
+        </article>
+
+        <article class="panel knowledge-panel">
+          <div class="panel-heading"><div><span class="index">03</span><h2>Evidence</h2></div><span id="evidence-count" class="count">0</span></div>
+          <div id="evidence-list" class="evidence-list"></div>
+        </article>
+      </aside>
+    </section>
+
+    <section class="panel discovery-panel">
+      <div class="panel-heading">
+        <div><span class="index">04</span><h2>Discovery queue</h2></div>
+        <button id="worker-toggle" class="text-button" type="button">PAUSE WORKER</button>
+      </div>
+      <div class="discovery-body">
+        <form id="discovery-form" class="source-form">
+          <label for="source-url">Company career page or job URL</label>
+          <div>
+            <input id="source-url" type="url" required placeholder="https://company.example/careers">
+            <select id="source-kind" aria-label="Task type"><option value="discover">Discover listing</option><option value="analyze">Analyze one job</option></select>
+            <button class="primary" type="submit">Queue</button>
+          </div>
+        </form>
+        <div>
+          <p class="micro">Recent tasks</p>
+          <div id="task-list" class="task-list"></div>
+        </div>
+        <div>
+          <p class="micro">Matched opportunities</p>
+          <div id="opportunity-list" class="opportunity-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel ledger-panel">
+      <div class="panel-heading">
+        <div><span class="index">05</span><h2>Application ledger</h2></div>
+        <p>Saved drafts and observed outcomes</p>
+      </div>
+      <div id="ledger" class="ledger"></div>
+    </section>
+  </main>
+
+  <dialog id="detail-dialog">
+    <button class="dialog-close" aria-label="Close" type="button">×</button>
+    <p class="eyebrow">Reviewed application record</p>
+    <h2 id="detail-title"></h2>
+    <p id="detail-meta" class="detail-meta"></p>
+    <p id="detail-destination" class="detail-destination"></p>
+    <div id="detail-notice" class="detail-notice hidden" role="status"></div>
+    <form id="draft-form">
+      <div id="detail-fields" class="detail-fields"></div>
+      <div id="draft-actions" class="review-actions hidden">
+        <button id="save-draft" class="secondary" type="submit">Save new revision</button>
+      </div>
+    </form>
+    <section id="authorization-panel" class="authorization-panel hidden">
+      <p class="micro">Exact authorization</p>
+      <label id="authorize-check-row" class="confirmation-row">
+        <input id="authorize-confirm" type="checkbox">
+        <span>I reviewed every answer and authorize this exact revision and destination.</span>
+      </label>
+      <button id="authorize-draft" class="primary" type="button">Authorize revision</button>
+      <div id="authorized-actions" class="hidden">
+        <p id="authorization-summary" class="authorization-summary"></p>
+        <label class="confirmation-row danger-row">
+          <input id="dispatch-confirm" type="checkbox">
+          <span>Submit this exact revision once. A crash may require me to check the site.</span>
+        </label>
+        <div class="split-actions">
+          <button id="revoke-authorization" class="secondary" type="button">Revoke</button>
+          <button id="dispatch-application" class="danger" type="button">Queue one submission</button>
+        </div>
+      </div>
+    </section>
+  </dialog>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
