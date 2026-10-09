@@ -33,6 +33,27 @@ function showNotice(message) {
   notice.classList.toggle('hidden', !message);
 }
 
+function showDeskDialog(message, options = {}) {
+  const dialog = el('action-dialog');
+  if (dialog.open) dialog.close('replaced');
+  const title = options.title || 'Action needed';
+  const confirmLabel = options.confirmLabel || 'Dismiss';
+  const cancelLabel = options.cancelLabel || '';
+  dialog.dataset.tone = options.tone || 'error';
+  el('action-dialog-kicker').textContent = options.kicker || 'Desk notice';
+  el('action-dialog-title').textContent = title;
+  el('action-dialog-message').textContent = String(message || 'The request could not be completed.');
+  el('action-dialog-primary').textContent = confirmLabel;
+  const cancel = el('action-dialog-cancel');
+  cancel.textContent = cancelLabel || 'Cancel';
+  cancel.classList.toggle('hidden', !cancelLabel);
+  dialog.returnValue = '';
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true });
+  });
+}
+
 function renderMessages(messages) {
   const box = el('messages');
   box.replaceChildren();
@@ -286,7 +307,7 @@ async function queuePreparation(opportunityId, button) {
   } catch (error) {
     button.disabled = false;
     button.textContent = 'Prepare';
-    alert(error.message);
+    await showDeskDialog(error.message, { title: 'Preparation could not start' });
   }
 }
 
@@ -485,7 +506,7 @@ el('message-form').addEventListener('submit', async (event) => {
     await refresh();
   } catch (error) {
     input.value = text;
-    alert(error.message);
+    await showDeskDialog(error.message, { title: 'Message not sent' });
   } finally {
     state.busy = false;
   }
@@ -524,7 +545,7 @@ el('provider-select').addEventListener('change', async (event) => {
     await refreshProviders();
     await refresh();
   } catch (error) {
-    alert(error.message);
+    await showDeskDialog(error.message, { title: 'CLI selection failed' });
     await refreshProviders();
   } finally {
     event.currentTarget.disabled = false;

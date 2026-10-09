@@ -193,6 +193,21 @@
     </section>
   </dialog>
 
+  <dialog id="action-dialog" class="action-dialog" aria-labelledby="action-dialog-title" aria-describedby="action-dialog-message">
+    <form method="dialog">
+      <div class="action-dialog-mark" aria-hidden="true">!</div>
+      <div class="action-dialog-copy">
+        <p id="action-dialog-kicker" class="micro">Desk notice</p>
+        <h2 id="action-dialog-title">Action needed</h2>
+        <p id="action-dialog-message"></p>
+      </div>
+      <div class="action-dialog-actions">
+        <button id="action-dialog-cancel" class="secondary hidden" type="submit" value="cancel">Cancel</button>
+        <button id="action-dialog-primary" class="primary" type="submit" value="confirm" autofocus>Dismiss</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/static/app.js" defer></script>
 </body>
 </html>

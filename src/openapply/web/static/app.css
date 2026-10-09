@@ -175,6 +175,18 @@ dialog h2 { margin: 0 0 8px; font-size: 36px; font-weight: 500; }
 .danger-row { padding: 12px; border: 1px solid var(--signal); background: rgba(240,75,35,.08); }
 .authorization-summary { color: var(--green); font-style: italic; }
 
+.action-dialog { width: min(570px, calc(100% - 32px)); padding: 0; overflow: visible; }
+.action-dialog form { display: grid; grid-template-columns: 68px 1fr; }
+.action-dialog-mark { display: grid; place-items: center; min-height: 190px; background: var(--signal); color: #fff8ef; font: 54px/1 "Palatino Linotype", Palatino, Georgia, serif; }
+.action-dialog-copy { padding: 28px 30px 22px; }
+.action-dialog-copy .micro { margin: 0 0 9px; }
+.action-dialog-copy h2 { margin: 0 0 13px; font-size: 31px; }
+.action-dialog-copy > p:last-child { margin: 0; color: var(--muted); font-size: 17px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.action-dialog-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--ink); background: var(--paper-2); }
+.action-dialog[data-tone="info"] .action-dialog-mark { background: var(--green); }
+.action-dialog[open] { animation: dialog-reveal .18s ease-out both; }
+@keyframes dialog-reveal { from { opacity: 0; transform: translateY(10px) scale(.985); } }
+
 @media (max-width: 900px) {
   .status-line time { display: none; }
   main { width: min(100% - 22px, 720px); }
@@ -197,4 +209,7 @@ dialog h2 { margin: 0 0 8px; font-size: 36px; font-weight: 500; }
   .ledger-row { grid-template-columns: 80px 1fr 42px; }
   .ledger-row .company, .ledger-row .state { grid-column: 2; }
   .ledger-row button { grid-column: 3; grid-row: 1 / 3; }
+  .action-dialog form { grid-template-columns: 48px 1fr; }
+  .action-dialog-mark { min-height: 160px; font-size: 38px; }
+  .action-dialog-copy { padding: 23px 20px 18px; }
 }

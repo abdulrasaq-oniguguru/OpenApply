@@ -42,6 +42,7 @@ def test_personal_app_state_chat_and_csrf(tmp_path: Path) -> None:
     token_match = re.search(r'name="openapply-csrf" content="([^"]+)"', page.text)
     assert page.status_code == 200
     assert "OpenApply Desk" in page.text
+    assert 'id="action-dialog"' in page.text
     assert token_match is not None
     token = token_match.group(1)
 
@@ -62,6 +63,11 @@ def test_personal_app_state_chat_and_csrf(tmp_path: Path) -> None:
     )
     assert reply.status_code == 200
     assert "interview" in reply.json()["assistant_message"]["text"]
+
+    script = client.get("/static/app.js")
+    assert script.status_code == 200
+    assert "alert(" not in script.text
+    assert "showDeskDialog(" in script.text
 
 
 def test_personal_app_interview_and_queue(tmp_path: Path) -> None:
