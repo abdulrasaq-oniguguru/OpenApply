@@ -16,6 +16,8 @@ from openapply.candidate.models import (
     Preferences,
     RemotePreference,
 )
+from openapply.candidate.parser import LocalResumeTextExtractor, ResumeExtractionError
+from openapply.candidate.resume_import import local_draft, merge_resume_draft
 from openapply.candidate.service import CandidateService, ResumeError
 from openapply.candidate.storage import ProfileError
 from openapply.cli import prompts as ask
@@ -123,10 +125,20 @@ def _prompt_resume(service: CandidateService, profile: CandidateProfile) -> Cand
         if raw is None or (profile.resume and raw == current):
             return profile
         try:
-            return service.attach_resume(profile, Path(raw.strip("\"'")))
+            attached = service.attach_resume(profile, Path(raw.strip("\"'")))
         except ResumeError as exc:
             console.print(f"[red]{exc}[/red]")
             current = None
+            continue
+        resume_path = service.resume_file(attached)
+        if resume_path is None or attached.resume is None:
+            return attached
+        try:
+            text = LocalResumeTextExtractor().extract_text(resume_path)
+            return merge_resume_draft(attached, local_draft(text), attached.resume)
+        except ResumeExtractionError as exc:
+            console.print(f"[yellow]Resume attached, but profile extraction failed: {exc}[/yellow]")
+            return attached
 
 
 def _prompt_default_provider() -> None:

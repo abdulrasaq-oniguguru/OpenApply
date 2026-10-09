@@ -58,22 +58,30 @@ class CandidateService:
         that single read, so they cannot disagree even if the source changes meanwhile.
         """
         source = source.expanduser()
-        if source.suffix.lower() not in SUPPORTED_SUFFIXES:
-            raise ResumeError("Resume must be a .pdf or .docx file")
         if not source.is_file():
             raise ResumeError(f"Resume file not found: {source}")
         data = _read_bounded(source)
+        return self.attach_resume_data(profile, source.name, data)
+
+    def attach_resume_data(
+        self, profile: CandidateProfile, original_name: str, data: bytes
+    ) -> CandidateProfile:
+        """Store already-bounded upload bytes and return a profile that references them."""
+        source = Path(original_name).name
+        suffix = Path(source).suffix.lower()
+        if suffix not in SUPPORTED_SUFFIXES:
+            raise ResumeError("Resume must be a .pdf or .docx file")
         if not data:
             raise ResumeError("Resume file is empty")
         if len(data) > MAX_RESUME_BYTES:
             raise ResumeError(f"Resume is larger than {MAX_RESUME_BYTES // (1024 * 1024)} MB")
 
         digest = hashlib.sha256(data).hexdigest()
-        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", source.stem).strip("._") or "resume"
-        filename = f"{safe_stem}-{digest[:8]}{source.suffix.lower()}"
+        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(source).stem).strip("._") or "resume"
+        filename = f"{safe_stem}-{digest[:8]}{suffix}"
         ensure_private_dir(self.resumes_path)
         atomic_write_bytes(self.resumes_path / filename, data, private=True)
-        ref = ResumeRef(filename=filename, original_name=source.name, sha256=digest)
+        ref = ResumeRef(filename=filename, original_name=source, sha256=digest)
         return profile.model_copy(update={"resume": ref})
 
     def resume_status(self, profile: CandidateProfile) -> ResumeStatus:

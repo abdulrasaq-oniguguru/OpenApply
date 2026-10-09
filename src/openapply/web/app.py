@@ -19,10 +19,28 @@ from openapply.applications.history import (
     ApplicationHistoryService,
     ApplicationWorkflowError,
 )
-from openapply.candidate.service import CandidateService
+from openapply.candidate.models import CandidateProfile
+from openapply.candidate.parser import LocalResumeTextExtractor, ResumeExtractionError
+from openapply.candidate.resume_import import (
+    local_draft,
+    merge_resume_draft,
+    provider_draft,
+)
+from openapply.candidate.service import (
+    MAX_RESUME_BYTES,
+    CandidateService,
+    ResumeError,
+    ResumeStatus,
+)
+from openapply.config.settings import ConfigError, load_settings, save_settings
 from openapply.conversations.service import ConversationService
 from openapply.interviews.models import EvidenceState
 from openapply.interviews.service import InterviewService
+from openapply.jobs.matcher import score_match
+from openapply.jobs.models import JobPosting
+from openapply.providers.errors import ProviderError
+from openapply.providers.registry import ProviderRegistry
+from openapply.providers.structured import StructuredOutputError
 from openapply.reports.service import ReportService
 from openapply.storage.database import Database
 from openapply.storage.repositories import OpportunityRepository
@@ -72,6 +90,19 @@ class PrepareRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     provider: str | None = Field(default=None, max_length=60)
+
+
+class ProfileSaveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: CandidateProfile
+    confirmed: bool
+
+
+class ProviderChoiceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(min_length=1, max_length=60)
 
 
 class DraftUpdateRequest(BaseModel):
@@ -139,6 +170,10 @@ def create_app(database: Database | None = None) -> FastAPI:
             opportunity["application"] = (
                 {"id": latest[0], "state": latest[1]} if latest is not None else None
             )
+        try:
+            default_provider = load_settings().default_provider
+        except ConfigError:
+            default_provider = None
         return {
             "conversation_id": conversation_id,
             "messages": [
@@ -154,6 +189,123 @@ def create_app(database: Database | None = None) -> FastAPI:
             "profile_ready": bool(
                 profile and profile.identity.full_name and profile.identity.email
             ),
+            "profile": profile.model_dump(mode="json") if profile is not None else None,
+            "default_provider": default_provider,
+        }
+
+    @app.get("/api/providers")
+    async def providers() -> dict[str, object]:
+        try:
+            settings = load_settings()
+        except ConfigError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        detected = await ProviderRegistry.from_settings(settings).detect()
+        return {
+            "selected": settings.default_provider,
+            "providers": [item.model_dump(mode="json") for item in detected],
+        }
+
+    @app.post("/api/settings/provider", dependencies=[Depends(require_csrf)])
+    async def choose_provider(body: ProviderChoiceRequest) -> dict[str, object]:
+        try:
+            settings = load_settings()
+            provider = ProviderRegistry.from_settings(settings).get(body.provider)
+            if not provider.supports_generation:
+                raise ConfigError(f"Provider '{body.provider}' cannot generate application text")
+            if not await provider.is_available():
+                raise ConfigError(
+                    f"Provider '{body.provider}' is not ready. Sign in or start it, then retry."
+                )
+            save_settings(settings.with_default(body.provider))
+        except (ConfigError, ProviderError) as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        return {"selected": body.provider}
+
+    @app.post("/api/profile/resume/preview", dependencies=[Depends(require_csrf)])
+    async def preview_resume(
+        request: Request, filename: str, provider: str | None = None
+    ) -> dict[str, object]:
+        """Store an uploaded resume and return a profile preview without saving it."""
+        if len(filename) > 255:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Filename is too long")
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > MAX_RESUME_BYTES:
+                raise HTTPException(
+                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    f"Resume is larger than {MAX_RESUME_BYTES // (1024 * 1024)} MB",
+                )
+        candidate = CandidateService()
+        current = candidate.load_or_new()
+        try:
+            attached = candidate.attach_resume_data(current, filename, bytes(data))
+            resume_path = candidate.resume_file(attached)
+            if attached.resume is None or resume_path is None:
+                raise ResumeError("The stored resume could not be verified")
+            text = LocalResumeTextExtractor().extract_text(resume_path)
+            draft = local_draft(text)
+            used_provider: str | None = None
+            if provider:
+                settings = load_settings()
+                provider_name = settings.default_provider if provider == "default" else provider
+                if not provider_name:
+                    raise ConfigError(
+                        "No default AI provider is configured. Uncheck AI extraction or choose "
+                        "a provider in setup."
+                    )
+                agent = ProviderRegistry.from_settings(settings).get(provider_name)
+                if not await agent.is_available():
+                    raise ConfigError(f"Provider '{provider_name}' is not ready")
+                draft = await provider_draft(agent, text)
+                used_provider = provider_name
+            preview = merge_resume_draft(attached, draft, attached.resume)
+        except (
+            ResumeError,
+            ResumeExtractionError,
+            ConfigError,
+            ProviderError,
+            StructuredOutputError,
+        ) as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        return {
+            "profile": preview.model_dump(mode="json"),
+            "filename": attached.resume.original_name,
+            "characters_extracted": len(text),
+            "used_provider": used_provider,
+            "missing_required": candidate.missing_required(preview),
+        }
+
+    @app.post("/api/profile", dependencies=[Depends(require_csrf)])
+    async def save_profile(body: ProfileSaveRequest) -> dict[str, object]:
+        if not body.confirmed:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Review confirmation is required before saving the profile.",
+            )
+        candidate = CandidateService()
+        if body.profile.resume is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "No resume is attached")
+        if candidate.resume_status(body.profile) is not ResumeStatus.OK:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "The staged resume is missing or has changed"
+            )
+        missing = candidate.missing_required(body.profile)
+        if missing:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"Complete these fields before saving: {', '.join(missing)}",
+            )
+        candidate.save(body.profile)
+        rematched = 0
+        for opportunity in opportunities.list(limit=500):
+            job = JobPosting.model_validate(opportunity["job"])
+            opportunities.update_match(str(opportunity["id"]), score_match(body.profile, job))
+            rematched += 1
+        return {
+            "profile": body.profile.model_dump(mode="json"),
+            "profile_ready": True,
+            "opportunities_rematched": rematched,
         }
 
     @app.post("/api/messages", dependencies=[Depends(require_csrf)])

@@ -47,6 +47,16 @@ class OpportunityRepository:
             raise RuntimeError("opportunity was not saved")
         return str(row["id"])
 
+    def update_match(self, opportunity_id: str, match: JobMatch) -> None:
+        """Replace only the candidate-specific score; discovery timestamps stay unchanged."""
+        with self.database.transaction(immediate=True) as connection:
+            cursor = connection.execute(
+                "UPDATE opportunities SET match_json = ? WHERE id = ?",
+                (match.model_dump_json(), opportunity_id),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(opportunity_id)
+
     def list(self, *, limit: int = 100) -> list[dict[str, object]]:
         with self.database.read() as connection:
             rows = connection.execute(

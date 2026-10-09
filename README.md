@@ -60,6 +60,12 @@ The app combines conversation, an interview, confirmed evidence, discovery tasks
 opportunities and the application ledger. It binds to loopback by default. On a VPS, keep that
 default and use an SSH tunnel; the current alpha is not an authenticated public website.
 
+The desk also accepts a PDF or DOCX resume. It extracts text locally, shows an editable profile
+preview, and saves only after explicit review. Standard contact, skill, experience and education
+sections work without AI; an optional checkbox can send the extracted text to the selected AI for
+richer structuring. The **AI CLI** selector in the header detects ready Codex, Claude and Ollama
+installations and persists the choice, so a new machine does not require a code change.
+
 The worker is a separate process, so restarting the web page does not lose queued work:
 
 ```bash

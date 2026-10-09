@@ -15,6 +15,12 @@
       <span><b>OpenApply</b><small>private application desk</small></span>
     </a>
     <div class="status-line">
+      <label class="provider-picker" for="provider-select">
+        <span>AI CLI</span>
+        <select id="provider-select" aria-label="Application AI CLI">
+          <option value="">Detecting…</option>
+        </select>
+      </label>
       <span class="pulse"></span>
       <span id="worker-status">LOCAL DESK ONLINE</span>
       <time id="clock"></time>
@@ -27,6 +33,58 @@
       <h1>One quiet desk for<br><em>the whole search.</em></h1>
       <p class="lede">Interview your agent. Inspect every claim. See exactly what was prepared and what the site actually confirmed.</p>
       <div class="today-stamp"><span>TODAY'S LEDGER</span><strong id="today-summary">Loading…</strong></div>
+    </section>
+
+    <section class="panel profile-panel">
+      <div class="panel-heading">
+        <div><span class="index">PROFILE</span><h2>Candidate file</h2></div>
+        <span id="profile-status" class="profile-status">NOT READY</span>
+      </div>
+      <div class="profile-body">
+        <div class="profile-intro">
+          <p class="eyebrow">Local first</p>
+          <h3>Bring your work history into the desk.</h3>
+          <p>PDF and DOCX text is read locally. Review the extracted facts before they become your application profile.</p>
+          <div id="profile-current" class="profile-current"></div>
+        </div>
+        <form id="resume-form" class="resume-form">
+          <label class="file-drop" for="resume-file">
+            <span class="file-drop-mark">PDF<br>DOCX</span>
+            <span><b id="resume-file-label">Choose your resume</b><small>Maximum 10 MB · nothing is submitted to an employer</small></span>
+            <input id="resume-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+          </label>
+          <label class="ai-consent">
+            <input id="resume-use-ai" type="checkbox">
+            <span><b>Structure work history with my configured AI</b><small>This sends the extracted resume text to that provider. Leave off to use the conservative local parser.</small></span>
+          </label>
+          <button id="extract-resume" class="primary" type="submit">Extract for review</button>
+          <p id="resume-error" class="form-error hidden" role="alert"></p>
+        </form>
+      </div>
+      <form id="profile-review" class="profile-review hidden">
+        <div class="review-heading">
+          <div><p class="micro">Review before saving</p><h3 id="profile-review-title">Extracted profile</h3></div>
+          <p id="profile-extraction-meta"></p>
+        </div>
+        <div class="profile-fields">
+          <label>Full name<input id="profile-name" type="text" required></label>
+          <label>Email<input id="profile-email" type="email" required></label>
+          <label>Phone<input id="profile-phone" type="tel"></label>
+          <label>City<input id="profile-city" type="text"></label>
+          <label>Country<input id="profile-country" type="text"></label>
+          <label>LinkedIn<input id="profile-linkedin" type="url"></label>
+          <label>GitHub<input id="profile-github" type="url"></label>
+          <label>Portfolio<input id="profile-portfolio" type="url"></label>
+          <label class="wide">Professional summary<textarea id="profile-summary" rows="4"></textarea></label>
+          <label class="wide">Skills<input id="profile-skills" type="text" placeholder="Python, Django, PostgreSQL"></label>
+        </div>
+        <div id="profile-career-preview" class="profile-career-preview"></div>
+        <label class="confirmation-row">
+          <input id="profile-confirm" type="checkbox">
+          <span>I reviewed these extracted facts and want to use them for matching and draft preparation.</span>
+        </label>
+        <div class="review-actions"><button class="primary" type="submit">Save candidate profile</button></div>
+      </form>
     </section>
 
     <section class="desk-grid">

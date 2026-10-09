@@ -1,5 +1,5 @@
 const csrf = document.querySelector('meta[name="openapply-csrf"]').content;
-const state = { data: null, busy: false, currentDetail: null };
+const state = { data: null, busy: false, currentDetail: null, profilePreview: null, providers: null };
 
 const el = (id) => document.getElementById(id);
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -10,7 +10,7 @@ function requestId() {
 
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
-  if (options.body) headers['Content-Type'] = 'application/json';
+  if (typeof options.body === 'string') headers['Content-Type'] = 'application/json';
   if ((options.method || 'GET') !== 'GET') headers['X-OpenApply-CSRF'] = csrf;
   const response = await fetch(path, { ...options, headers });
   if (!response.ok) {
@@ -93,6 +93,108 @@ function renderEvidence(items) {
   });
 }
 
+function renderProfile(profile, ready) {
+  const status = el('profile-status');
+  status.textContent = ready ? 'READY TO PREPARE' : 'PROFILE NEEDED';
+  status.classList.toggle('is-ready', ready);
+  const current = el('profile-current');
+  if (!profile) {
+    current.textContent = 'No candidate facts saved yet.';
+    return;
+  }
+  const facts = [
+    profile.identity.full_name || 'Name missing',
+    profile.identity.email || 'Email missing',
+    `${profile.skills.length} skills`,
+    `${profile.experience.length} roles`,
+    profile.resume ? profile.resume.original_name : 'No resume'
+  ];
+  current.textContent = facts.join(' · ');
+}
+
+function renderProviders(payload) {
+  state.providers = payload;
+  const select = el('provider-select');
+  select.replaceChildren();
+  const capable = payload.providers.filter((provider) => provider.supports_generation);
+  const configured = capable.find((provider) => provider.name === payload.selected);
+  if (!configured) {
+    const prompt = node('option', '', 'Choose CLI…');
+    prompt.value = '';
+    prompt.selected = true;
+    select.append(prompt);
+  }
+  capable.forEach((provider) => {
+    const option = node('option', '', `${provider.display_name} · ${provider.available ? 'ready' : 'not ready'}`);
+    option.value = provider.name;
+    option.disabled = !provider.available;
+    option.selected = provider.name === payload.selected;
+    select.append(option);
+  });
+  if (!capable.length) {
+    const empty = node('option', '', 'No generation CLI found');
+    empty.value = '';
+    select.append(empty);
+  }
+  select.classList.toggle('is-unset', !configured);
+  const selected = capable.find((provider) => provider.name === payload.selected && provider.available);
+  el('resume-use-ai').disabled = !selected;
+  if (!selected) el('resume-use-ai').checked = false;
+  el('resume-use-ai').closest('label').title = selected
+    ? `Resume structuring will use ${selected.display_name}.`
+    : 'Choose a ready AI CLI above to enable structured extraction.';
+}
+
+async function refreshProviders() {
+  try {
+    renderProviders(await api('/api/providers'));
+  } catch (error) {
+    const select = el('provider-select');
+    select.replaceChildren(node('option', '', 'Provider check failed'));
+    select.title = error.message;
+  }
+}
+
+function careerCard(title, items, formatter) {
+  const card = node('article', 'career-card');
+  card.append(node('h4', '', `${title} · ${items.length}`));
+  if (!items.length) {
+    card.append(node('small', '', 'Nothing extracted. You can add it later with profile edit.'));
+  } else {
+    items.slice(0, 5).forEach((item) => card.append(node('p', '', formatter(item))));
+    if (items.length > 5) card.append(node('small', '', `+ ${items.length - 5} more`));
+  }
+  return card;
+}
+
+function showProfilePreview(payload) {
+  const profile = payload.profile;
+  state.profilePreview = profile;
+  el('profile-name').value = profile.identity.full_name || '';
+  el('profile-email').value = profile.identity.email || '';
+  el('profile-phone').value = profile.identity.phone || '';
+  el('profile-city').value = profile.identity.city || '';
+  el('profile-country').value = profile.identity.country || '';
+  el('profile-linkedin').value = profile.links.linkedin || '';
+  el('profile-github').value = profile.links.github || '';
+  el('profile-portfolio').value = profile.links.portfolio || '';
+  el('profile-summary').value = profile.summary || '';
+  el('profile-skills').value = profile.skills.join(', ');
+  el('profile-confirm').checked = false;
+  el('profile-review-title').textContent = payload.filename;
+  const extraction = payload.used_provider
+    ? `${payload.characters_extracted.toLocaleString()} characters read locally, then structured by ${payload.used_provider}.`
+    : `${payload.characters_extracted.toLocaleString()} characters parsed locally. Review the detected skills, dates, employers and education below.`;
+  el('profile-extraction-meta').textContent = extraction;
+  const career = el('profile-career-preview');
+  career.replaceChildren(
+    careerCard('Experience', profile.experience, (item) => `${item.title} · ${item.company}`),
+    careerCard('Education', profile.education, (item) => `${item.degree || 'Study'} · ${item.institution}`)
+  );
+  el('profile-review').classList.remove('hidden');
+  el('profile-review').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function renderLedger(report) {
   el('today-summary').textContent = report.short_text;
   const ledger = el('ledger');
@@ -130,7 +232,7 @@ function renderTasks(tasks, paused) {
   if (!list.children.length) list.append(node('p', 'ledger-empty', 'No queued work.'));
 }
 
-function renderOpportunities(items) {
+function renderOpportunities(items, profileReady) {
   const list = el('opportunity-list');
   list.replaceChildren();
   items.slice(0, 6).forEach((item) => {
@@ -143,6 +245,8 @@ function renderOpportunities(items) {
       action.title = item.application.state.replaceAll('_', ' ');
       action.addEventListener('click', () => showDetail(item.application.id));
     } else {
+      action.disabled = !profileReady;
+      if (!profileReady) action.title = 'Upload and save your candidate profile first';
       action.addEventListener('click', () => queuePreparation(item.id, action));
     }
     row.append(action);
@@ -159,7 +263,8 @@ async function refresh() {
   renderEvidence(data.evidence);
   renderLedger(data.report);
   renderTasks(data.tasks, data.worker_paused);
-  renderOpportunities(data.opportunities);
+  renderProfile(data.profile, data.profile_ready);
+  renderOpportunities(data.opportunities, data.profile_ready);
 }
 
 async function updateEvidence(item, newState) {
@@ -403,6 +508,92 @@ el('interview-form').addEventListener('submit', async (event) => {
   await refresh();
 });
 
+el('resume-file').addEventListener('change', (event) => {
+  const file = event.currentTarget.files[0];
+  el('resume-file-label').textContent = file ? file.name : 'Choose your resume';
+});
+
+el('provider-select').addEventListener('change', async (event) => {
+  const provider = event.currentTarget.value;
+  if (!provider) return;
+  event.currentTarget.disabled = true;
+  try {
+    await api('/api/settings/provider', {
+      method: 'POST', body: JSON.stringify({ provider })
+    });
+    await refreshProviders();
+    await refresh();
+  } catch (error) {
+    alert(error.message);
+    await refreshProviders();
+  } finally {
+    event.currentTarget.disabled = false;
+  }
+});
+
+el('resume-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const file = el('resume-file').files[0];
+  if (!file) return;
+  const button = el('extract-resume');
+  const errorBox = el('resume-error');
+  button.disabled = true;
+  button.textContent = el('resume-use-ai').checked ? 'Structuring profile…' : 'Reading locally…';
+  errorBox.classList.add('hidden');
+  try {
+    const provider = el('resume-use-ai').checked ? '&provider=default' : '';
+    const payload = await api(`/api/profile/resume/preview?filename=${encodeURIComponent(file.name)}${provider}`, {
+      method: 'POST', body: file
+    });
+    showProfilePreview(payload);
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Extract for review';
+  }
+});
+
+el('profile-review').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!state.profilePreview) return;
+  const errorBox = el('resume-error');
+  if (!el('profile-confirm').checked) {
+    errorBox.textContent = 'Check the review confirmation before saving.';
+    errorBox.classList.remove('hidden');
+    return;
+  }
+  const profile = structuredClone(state.profilePreview);
+  const optional = (value) => value.trim() || null;
+  profile.identity.full_name = el('profile-name').value.trim();
+  profile.identity.email = el('profile-email').value.trim();
+  profile.identity.phone = optional(el('profile-phone').value);
+  profile.identity.city = optional(el('profile-city').value);
+  profile.identity.country = optional(el('profile-country').value);
+  profile.links.linkedin = optional(el('profile-linkedin').value);
+  profile.links.github = optional(el('profile-github').value);
+  profile.links.portfolio = optional(el('profile-portfolio').value);
+  profile.summary = optional(el('profile-summary').value);
+  profile.skills = [...new Set(el('profile-skills').value.split(',').map((value) => value.trim()).filter(Boolean))];
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    await api('/api/profile', {
+      method: 'POST', body: JSON.stringify({ profile, confirmed: true })
+    });
+    state.profilePreview = null;
+    event.currentTarget.classList.add('hidden');
+    errorBox.classList.add('hidden');
+    await refresh();
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+  }
+});
+
 el('discovery-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const url = el('source-url').value.trim();
@@ -421,4 +612,6 @@ el('worker-toggle').addEventListener('click', async () => {
 el('detail-dialog').querySelector('.dialog-close').addEventListener('click', () => el('detail-dialog').close());
 setInterval(() => { el('clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }, 1000);
 setInterval(() => { if (!el('detail-dialog').open) refresh().catch(() => {}); }, 5000);
-refresh().catch((error) => { el('today-summary').textContent = error.message; });
+Promise.all([refresh(), refreshProviders()]).catch((error) => {
+  el('today-summary').textContent = error.message;
+});
